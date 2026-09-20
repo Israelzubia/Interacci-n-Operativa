@@ -1,0 +1,25 @@
+{
+  "name": "interaccion-operativa",
+  "version": "1.0.0",
+  "description": "Monitoreo de grupos de WhatsApp y priorizacion de correo para operacion de ultima milla",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node src/server.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Israelzubia/Interacci-n-Operativa.git"
+  },
+  "type": "module",
+  "bugs": {
+    "url": "https://github.com/Israelzubia/Interacci-n-Operativa/issues"
+  },
+  "homepage": "https://github.com/Israelzubia/Interacci-n-Operativa#readme",
+  "private": true,
+  "dependencies": {
+    "@whiskeysockets/baileys": "^7.0.0-rc14",
+    "express": "^5.2.1",
+    "pino": "^10.3.1",
+    "qrcode": "^1.5.4"
+  }
+}
