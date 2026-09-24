@@ -1,3 +1,4 @@
+import { getStats } from './store.js';
 import { getSocket, getState } from './whatsapp.js';
 
 // Devuelve los grupos en los que participa la cuenta conectada.
@@ -11,6 +12,7 @@ export async function listGroups() {
       id: g.id,
       name: g.subject,
       participants: g.participants.length,
+      ...getStats(g.id),
       createdAt: g.creation ? new Date(g.creation * 1000).toISOString() : null,
     }))
     .sort((a, b) => a.name.localeCompare(b.name, 'es'));

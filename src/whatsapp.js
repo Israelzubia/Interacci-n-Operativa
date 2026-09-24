@@ -3,6 +3,7 @@ import makeWASocket, {
   fetchLatestBaileysVersion,
   useMultiFileAuthState,
 } from '@whiskeysockets/baileys';
+import { addMessage } from './store.js';
 import { rm } from 'node:fs/promises';
 import pino from 'pino';
 import QRCode from 'qrcode';
@@ -13,6 +14,14 @@ const logger = pino({ level: 'silent' });
 // Estado observable por la interfaz: disconnected | qr | connecting | connected
 const state = { status: 'disconnected', qr: null, user: null };
 let sock = null;
+
+function safeAdd(msg) {
+  try {
+    addMessage(msg);
+  } catch (err) {
+    console.error('Mensaje omitido:', err.message);
+  }
+}
 
 export function getState() {
   return { ...state };
@@ -27,8 +36,10 @@ export async function connect() {
   const { version } = await fetchLatestBaileysVersion();
 
   state.status = 'connecting';
-  sock = makeWASocket({ version, auth, logger, printQRInTerminal: false });
+  sock = makeWASocket({ version, auth, logger, printQRInTerminal: false, syncFullHistory: true });
   sock.ev.on('creds.update', saveCreds);
+  sock.ev.on('messages.upsert', ({ messages }) => messages.forEach(safeAdd));
+  sock.ev.on('messaging-history.set', ({ messages }) => messages.forEach(safeAdd));
 
   sock.ev.on('connection.update', async ({ connection, lastDisconnect, qr }) => {
     if (qr) {

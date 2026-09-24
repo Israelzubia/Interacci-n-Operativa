@@ -1,6 +1,7 @@
 import express from 'express';
 import { fileURLToPath } from 'node:url';
 import { listGroups } from './groups.js';
+import { getMessages } from './store.js';
 import { connect, getState, logout } from './whatsapp.js';
 
 const PORT = process.env.PORT || 3000;
@@ -17,6 +18,8 @@ app.get('/api/groups', async (_req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+app.get('/api/groups/:id/messages', (req, res) => res.json(getMessages(req.params.id)));
 
 app.post('/api/connect', async (_req, res) => {
   if (getState().status === 'disconnected') await connect();
