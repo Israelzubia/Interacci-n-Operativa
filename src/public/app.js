@@ -6,7 +6,12 @@ const LABELS = {
   connected: 'Conectado',
 };
 
+const CLIENTS = ['Todos', 'MELI', 'WM', 'Onest', 'Estafeta', 'Coppel', 'Amazon', 'Big Ticket', 'Otros'];
+const TYPES = ['Todos', 'Clientes', 'Proveedores', 'Interno'];
+
 let groups = [];
+let client = 'Todos';
+let type = 'Todos';
 let loadedFor = null;
 
 const post = (url) => fetch(url, { method: 'POST' });
@@ -64,12 +69,33 @@ function groupItem(g) {
   return d;
 }
 
+// Fila de pestañas; el conteo respeta el filtro de la otra fila
+function renderTabs(el, options, field, current, others, onPick) {
+  el.replaceChildren(
+    ...options.map((o) => {
+      const b = document.createElement('button');
+      const n = others.filter((g) => o === 'Todos' || g[field] === o).length;
+      b.textContent = `${o} (${n})`;
+      b.classList.toggle('active', o === current);
+      b.addEventListener('click', () => {
+        onPick(o);
+        renderGroups();
+      });
+      return b;
+    }),
+  );
+}
+
 function renderGroups() {
+  const byClient = (g) => client === 'Todos' || g.client === client;
+  const byType = (g) => type === 'Todos' || g.type === type;
+  renderTabs($('clientTabs'), CLIENTS, 'client', client, groups.filter(byType), (c) => (client = c));
+  renderTabs($('typeTabs'), TYPES, 'type', type, groups.filter(byClient), (t) => (type = t));
   const q = $('filter').value.trim().toLowerCase();
-  const rows = groups.filter((g) => g.name.toLowerCase().includes(q));
+  const rows = groups.filter((g) => byClient(g) && byType(g) && g.name.toLowerCase().includes(q));
   const withMsgs = rows.filter((g) => g.messageCount).sort((a, b) => b.lastMessageAt - a.lastMessageAt);
   const without = rows.filter((g) => !g.messageCount);
-  $('groupsTitle').textContent = `Grupos (${rows.length}${q ? ` de ${groups.length}` : ''})`;
+  $('groupsTitle').textContent = `Grupos (${rows.length}${rows.length !== groups.length ? ` de ${groups.length}` : ''})`;
   $('withTitle').textContent = `Con mensajes (${withMsgs.length})`;
   $('withoutTitle').textContent = `Sin mensajes (${without.length})`;
   $('withList').replaceChildren(...withMsgs.map(groupItem));

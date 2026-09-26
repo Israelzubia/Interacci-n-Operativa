@@ -35,6 +35,10 @@
     .msg .who { font-weight: 600; font-size: .85rem; }
     .msg .when { color: var(--muted); font-size: .75rem; margin-left: 6px; }
     .msg .txt { white-space: pre-wrap; word-break: break-word; }
+    .tabs { display: flex; gap: 6px; flex-wrap: wrap; margin: 12px 0 0; }
+    .tabs + .tabs { margin-top: 8px; }
+    .tabs button { padding: 5px 12px; border-radius: 999px; font-size: .9rem; }
+    .tabs button.active { background: var(--accent); border-color: var(--accent); color: #fff; }
     [hidden] { display: none !important; }
   </style>
 </head>
@@ -59,6 +63,8 @@
       <strong id="groupsTitle">Grupos</strong>
       <button id="refreshBtn">Actualizar</button>
     </div>
+    <div class="tabs" id="typeTabs"></div>
+    <div class="tabs" id="clientTabs"></div>
     <input id="filter" type="search" placeholder="Buscar grupo…" style="margin-top:12px">
     <h3 class="sec" id="withTitle"></h3>
     <div id="withList"></div>
