@@ -1,7 +1,11 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 
 const FILE = 'data/messages.json';
-const MAX_PER_CHAT = 500;
+// Se conservan los mensajes de los ultimos 30 dias, con un tope por grupo
+const RETENTION_SECS = 30 * 86400;
+const MAX_PER_CHAT = 5000;
+// Mensajes que se envian a la interfaz al abrir un grupo
+const MAX_SHOWN = 500;
 
 // jid del grupo -> mensajes ordenados por fecha
 const chats = new Map();
@@ -59,13 +63,21 @@ export function addMessage(msg) {
     ts: Number(msg.messageTimestamp?.low ?? msg.messageTimestamp) || 0,
   });
   list.sort((a, b) => a.ts - b.ts);
-  chats.set(jid, list.slice(-MAX_PER_CHAT));
+  const cutoff = Date.now() / 1000 - RETENTION_SECS;
+  chats.set(jid, list.filter((m) => m.ts >= cutoff).slice(-MAX_PER_CHAT));
   persist();
 }
 
-export const getMessages = (jid) => chats.get(jid) ?? [];
+export const getMessages = (jid) => (chats.get(jid) ?? []).slice(-MAX_SHOWN);
 
 export function getStats(jid) {
   const list = chats.get(jid) ?? [];
-  return { messageCount: list.length, lastMessageAt: list.at(-1)?.ts ?? null };
+  const now = Date.now() / 1000;
+  const since = (secs) => list.filter((m) => m.ts >= now - secs).length;
+  return {
+    messageCount: list.length,
+    lastMessageAt: list.at(-1)?.ts ?? null,
+    messages24h: since(86400),
+    messages7d: since(7 * 86400),
+  };
 }

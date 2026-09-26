@@ -5,13 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Interacción Operativa</title>
   <style>
-    :root { --bg: #f6f7f9; --card: #fff; --text: #1c1f24; --muted: #6b7280; --line: #e5e7eb; --accent: #128c7e; --danger: #b42318; }
+    :root { --bg: #f6f7f9; --card: #fff; --text: #1c1f24; --muted: #6b7280; --line: #e5e7eb; --accent: #128c7e; --danger: #b42318; --seq: #2a78d6; --track: #f0efec; }
     @media (prefers-color-scheme: dark) {
-      :root { --bg: #14171a; --card: #1e2226; --text: #eceff1; --muted: #9aa4ad; --line: #2c3238; --accent: #25d366; --danger: #f97066; }
+      :root { --bg: #14171a; --card: #1e2226; --text: #eceff1; --muted: #9aa4ad; --line: #2c3238; --accent: #25d366; --danger: #f97066; --seq: #3987e5; --track: #2c3238; }
     }
     * { box-sizing: border-box; }
     body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 system-ui, sans-serif; }
-    main { max-width: 860px; margin: 0 auto; padding: 24px 16px; }
+    main { max-width: 980px; margin: 0 auto; padding: 24px 16px; }
     h1 { font-size: 1.4rem; margin: 0 0 16px; }
     .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 20px; margin-bottom: 16px; }
     .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
@@ -39,6 +39,34 @@
     .tabs + .tabs { margin-top: 8px; }
     .tabs button { padding: 5px 12px; border-radius: 999px; font-size: .9rem; }
     .tabs button.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+    /* Panel de analisis */
+    .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-bottom: 16px; }
+    .kpi { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+    .kpi .label { color: var(--muted); font-size: .8rem; }
+    .kpi .value { font-size: 1.9rem; font-weight: 600; line-height: 1.2; font-variant-numeric: tabular-nums; }
+    .kpi .sub { color: var(--muted); font-size: .8rem; }
+    .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+    .grid2 .card { margin-bottom: 0; }
+    .viz h2 { font-size: 1rem; margin: 0 0 2px; }
+    .viz .hint { color: var(--muted); font-size: .8rem; margin: 0 0 12px; }
+    .matrix { width: 100%; border-collapse: separate; border-spacing: 2px; font-variant-numeric: tabular-nums; }
+    .matrix th { font-size: .78rem; color: var(--muted); font-weight: 500; padding: 4px 6px; border: 0; }
+    .matrix th.rowh { text-align: left; color: var(--text); font-size: .85rem; white-space: nowrap; }
+    .matrix td { text-align: center; padding: 0; border: 0; }
+    .matrix td button { width: 100%; min-height: 44px; border: 0; border-radius: 4px; padding: 4px; font-size: .9rem; font-weight: 600; line-height: 1.15; }
+    .matrix td button small { display: block; font-weight: 400; font-size: .7rem; opacity: .85; }
+    .matrix td button.sel { outline: 2px solid var(--text); outline-offset: 1px; }
+    .matrix td.total button { background: transparent; color: var(--text); }
+    .matrix td.empty { color: var(--muted); font-size: .85rem; }
+    .bars { display: grid; grid-template-columns: max-content 1fr max-content; gap: 8px 10px; align-items: center; font-size: .85rem; }
+    .bars .name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 220px; }
+    .bars .track { height: 14px; }
+    .bars .bar { height: 100%; background: var(--seq); border-radius: 0 4px 4px 0; min-width: 2px; }
+    .bars .num { text-align: right; font-variant-numeric: tabular-nums; color: var(--muted); }
+    .bars .row { display: contents; cursor: pointer; }
+    .bars .row:hover .name { text-decoration: underline; }
+    .chip { display: inline-block; font-size: .72rem; padding: 1px 7px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); margin-left: 6px; white-space: nowrap; }
+    #tip { position: fixed; pointer-events: none; background: var(--text); color: var(--card); font-size: .8rem; padding: 6px 9px; border-radius: 6px; max-width: 260px; z-index: 10; line-height: 1.35; }
     [hidden] { display: none !important; }
   </style>
 </head>
@@ -57,6 +85,28 @@
       <img class="qr" id="qr" alt="Código QR para vincular WhatsApp">
     </div>
   </section>
+
+  <div id="dashboard" hidden>
+    <div class="kpis" id="kpis"></div>
+    <div class="grid2">
+      <section class="card viz">
+        <h2>Grupos por cliente y tipo</h2>
+        <p class="hint">Número de grupos y mensajes en las últimas 24 h. Clic en una celda para filtrar la lista.</p>
+        <table class="matrix" id="matrix"></table>
+      </section>
+      <section class="card viz">
+        <h2>Mensajes en las últimas 24 h por cliente</h2>
+        <p class="hint">Clic en un cliente para filtrar la lista.</p>
+        <div class="bars" id="clientBars"></div>
+      </section>
+    </div>
+    <section class="card viz" style="margin-top:16px">
+      <h2>Grupos más activos · últimas 24 h</h2>
+      <p class="hint">Clic en un grupo para abrirlo en la lista.</p>
+      <div class="bars" id="topBars"></div>
+    </section>
+  </div>
+  <div id="tip" hidden></div>
 
   <section class="card" id="groupsCard" hidden>
     <div class="row">
