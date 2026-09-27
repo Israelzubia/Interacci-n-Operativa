@@ -67,6 +67,28 @@
     .bars .row:hover .name { text-decoration: underline; }
     .chip { display: inline-block; font-size: .72rem; padding: 1px 7px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); margin-left: 6px; white-space: nowrap; }
     #tip { position: fixed; pointer-events: none; background: var(--text); color: var(--card); font-size: .8rem; padding: 6px 9px; border-radius: 6px; max-width: 260px; z-index: 10; line-height: 1.35; }
+    /* Vista de personas */
+    .views { margin: 0 0 16px; }
+    .views button { font-size: .95rem; padding: 6px 16px; }
+    .filters { display: grid; grid-template-columns: 1fr minmax(0, 260px) max-content; gap: 10px; align-items: center; margin-top: 12px; }
+    .filters input[type=search] { margin: 0; }
+    select { font: inherit; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--card); color: var(--text); width: 100%; }
+    .check { font-size: .85rem; color: var(--muted); white-space: nowrap; display: flex; align-items: center; gap: 6px; }
+    .check input { width: auto; margin: 0; }
+    .bulk { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 12px; padding: 10px 12px; border: 1px dashed var(--line); border-radius: 8px; font-size: .85rem; }
+    .bulk span { margin-right: auto; }
+    table.people { margin-top: 8px; }
+    table.people td { vertical-align: middle; font-size: .9rem; }
+    table.people .who { font-weight: 500; }
+    table.people .phone { color: var(--muted); font-size: .8rem; font-variant-numeric: tabular-nums; }
+    table.people td.num { font-variant-numeric: tabular-nums; }
+    table.people select { width: auto; padding: 4px 8px; font-size: .85rem; }
+    table.people select.suggested { border-style: dashed; color: var(--muted); }
+    .ok { color: var(--accent); font-size: .8rem; margin-left: 6px; }
+    @media (max-width: 640px) {
+      .filters { grid-template-columns: 1fr; }
+      table.people th:nth-child(3), table.people td:nth-child(3) { display: none; }
+    }
     [hidden] { display: none !important; }
   </style>
 </head>
@@ -86,6 +108,12 @@
     </div>
   </section>
 
+  <nav class="tabs views" id="views" hidden>
+    <button data-view="groups" class="active">Grupos</button>
+    <button data-view="people">Personas</button>
+  </nav>
+
+  <div id="viewGroups">
   <div id="dashboard" hidden>
     <div class="kpis" id="kpis"></div>
     <div class="grid2">
@@ -121,7 +149,40 @@
     <h3 class="sec" id="withoutTitle"></h3>
     <div id="withoutList"></div>
   </section>
+  </div>
+
+  <div id="viewPeople" hidden>
+    <div class="kpis" id="peopleKpis"></div>
+    <section class="card">
+      <div class="row">
+        <strong id="peopleTitle">Personas</strong>
+        <button id="peopleRefresh">Actualizar</button>
+      </div>
+      <p class="hint muted" style="margin:6px 0 0;font-size:.85rem">
+        El rol se sugiere según los grupos donde participa cada persona. Revísalo y confírmalo;
+        lo confirmado es lo que se usará para medir la interacción del equipo con clientes y proveedores.
+      </p>
+      <div class="tabs" id="roleTabs"></div>
+      <div class="filters">
+        <input id="peopleFilter" type="search" placeholder="Buscar nombre o número…">
+        <select id="groupFilter"><option value="">Todos los grupos</option></select>
+        <label class="check"><input type="checkbox" id="pendingOnly"> Solo por confirmar</label>
+      </div>
+      <div class="bulk" id="bulk" hidden>
+        <span id="bulkText"></span>
+        <button data-role="Equipo">Equipo</button>
+        <button data-role="Cliente">Cliente</button>
+        <button data-role="Proveedor">Proveedor</button>
+      </div>
+      <table class="people">
+        <thead><tr><th>Persona</th><th class="num">Grupos</th><th>Clientes</th><th class="num">Mensajes</th><th>Rol</th></tr></thead>
+        <tbody id="peopleBody"></tbody>
+      </table>
+      <p class="muted" id="peopleMore" style="font-size:.85rem"></p>
+    </section>
+  </div>
 </main>
 <script src="app.js"></script>
+<script src="people.js"></script>
 </body>
 </html>

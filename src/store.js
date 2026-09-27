@@ -1,4 +1,5 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { pickJid, rememberName } from './people.js';
 
 const FILE = 'data/messages.json';
 // Se conservan los mensajes de los ultimos 30 dias, con un tope por grupo
@@ -26,9 +27,10 @@ function persist() {
   }, 1000);
 }
 
+const unwrap = (message) => message?.ephemeralMessage?.message ?? message?.viewOnceMessage?.message ?? message;
+
 function describe(message) {
-  if (!message) return null;
-  const m = message.ephemeralMessage?.message ?? message.viewOnceMessage?.message ?? message;
+  const m = unwrap(message);
   if (!m) return null;
   const text =
     m.conversation ??
@@ -55,10 +57,17 @@ export function addMessage(msg) {
 
   const list = chats.get(jid) ?? [];
   if (list.some((m) => m.id === msg.key.id)) return;
+  // Quien envia: 'me' para la cuenta conectada; si no, su numero o id interno
+  const sender = msg.key.fromMe ? 'me' : pickJid(msg.key.participant, msg.key.participantAlt, msg.participant);
+  if (!msg.key.fromMe) rememberName(sender, { push: msg.pushName });
+  // Mensaje al que responde (cuando se usa "responder" en WhatsApp)
+  const ctx = Object.values(unwrap(msg.message) ?? {}).find((v) => v?.contextInfo)?.contextInfo;
   list.push({
     id: msg.key.id,
     from: msg.key.fromMe ? 'yo' : (msg.pushName || msg.key.participant?.split('@')[0] || '?'),
     fromMe: !!msg.key.fromMe,
+    sender,
+    quotedId: ctx?.stanzaId || undefined,
     text,
     ts: Number(msg.messageTimestamp?.low ?? msg.messageTimestamp) || 0,
   });
@@ -67,6 +76,8 @@ export function addMessage(msg) {
   chats.set(jid, list.filter((m) => m.ts >= cutoff).slice(-MAX_PER_CHAT));
   persist();
 }
+
+export const allChats = () => chats;
 
 export const getMessages = (jid) => (chats.get(jid) ?? []).slice(-MAX_SHOWN);
 

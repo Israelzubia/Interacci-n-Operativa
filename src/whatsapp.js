@@ -3,6 +3,7 @@ import makeWASocket, {
   fetchLatestBaileysVersion,
   useMultiFileAuthState,
 } from '@whiskeysockets/baileys';
+import { rememberName } from './people.js';
 import { addMessage } from './store.js';
 import { rm } from 'node:fs/promises';
 import pino from 'pino';
@@ -23,6 +24,12 @@ function safeAdd(msg) {
   }
 }
 
+// Nombre en la agenda del telefono y nombre que la persona se puso en WhatsApp
+function learnContact(c) {
+  const names = { contact: c.name, push: c.notify };
+  for (const jid of [c.id, c.phoneNumber, c.lid]) rememberName(jid, names);
+}
+
 export function getState() {
   return { ...state };
 }
@@ -39,7 +46,12 @@ export async function connect() {
   sock = makeWASocket({ version, auth, logger, printQRInTerminal: false, syncFullHistory: true });
   sock.ev.on('creds.update', saveCreds);
   sock.ev.on('messages.upsert', ({ messages }) => messages.forEach(safeAdd));
-  sock.ev.on('messaging-history.set', ({ messages }) => messages.forEach(safeAdd));
+  sock.ev.on('messaging-history.set', ({ messages, contacts }) => {
+    messages.forEach(safeAdd);
+    contacts?.forEach(learnContact);
+  });
+  sock.ev.on('contacts.upsert', (contacts) => contacts.forEach(learnContact));
+  sock.ev.on('contacts.update', (contacts) => contacts.forEach(learnContact));
 
   sock.ev.on('connection.update', async ({ connection, lastDisconnect, qr }) => {
     if (qr) {

@@ -297,6 +297,7 @@ async function refresh() {
   $('logoutBtn').hidden = s.status !== 'connected';
   $('connectBtn').hidden = s.status !== 'disconnected';
   $('groupsCard').hidden = s.status !== 'connected';
+  $('views').hidden = s.status !== 'connected';
   if (s.status !== 'connected') $('dashboard').hidden = true;
 
   // Carga los grupos una vez por sesion conectada; reintenta si aun no estan listos
