@@ -70,6 +70,11 @@ const ACK = /^(ok(ay|ey|i|is)?|va|vale|sale|listo|perfecto|hecho|enterad[oa]s?|g
 const EMOJI_ONLY = /^[\p{Extended_Pictographic}\p{Emoji_Modifier}\u200d\ufe0f\s]+$/u;
 const isAck = (text) => text === '[sticker]' || EMOJI_ONLY.test(text) || ACK.test(text.trim());
 
+const TREND_DAYS = 30;
+const SPARK_DAYS = 14;
+// Fecha local (AAAA-MM-DD) de un instante
+const dayOf = (ts) => new Date((ts + TZ_OFFSET) * 1000).toISOString().slice(0, 10);
+
 const median = (xs) => {
   if (!xs.length) return null;
   const s = [...xs].sort((a, b) => a - b);
@@ -89,6 +94,46 @@ function summarize(reqs, threshold) {
     median: median(waits),
     avg: avg(waits),
   };
+}
+
+// Mediana y numero de respuestas (solo las respondidas)
+function summarizeAnswered(list) {
+  const answered = list.filter((r) => r.answeredAt);
+  return { responses: answered.length, median: median(answered.map((r) => r.wait)) };
+}
+
+// Mediana diaria de los ultimos SPARK_DAYS dias (null si ese dia no hubo respuestas)
+function dailyMedians(list, now) {
+  const byDay = group(list, (r) => dayOf(r.start));
+  return Array.from({ length: SPARK_DAYS }, (_, i) => {
+    const day = dayOf(now - (SPARK_DAYS - 1 - i) * 86400);
+    return median((byDay.get(day) ?? []).map((r) => r.wait));
+  });
+}
+
+// Serie diaria: solicitudes, respuestas por color del semaforo, sin respuesta y mediana
+function dailyTrend(list, thr, now) {
+  const byDay = group(list, (r) => dayOf(r.start));
+  const first = list.length ? dayOf(Math.min(...list.map((r) => r.start))) : dayOf(now);
+  const out = [];
+  for (let i = TREND_DAYS - 1; i >= 0; i--) {
+    const day = dayOf(now - i * 86400);
+    if (day < first) continue;
+    const rs = byDay.get(day) ?? [];
+    const answered = rs.filter((r) => r.answeredAt);
+    out.push({
+      day,
+      requests: rs.length,
+      fast: answered.filter((r) => r.wait < 300).length,
+      mid: answered.filter((r) => r.wait >= 300 && r.wait < 600).length,
+      slow: answered.filter((r) => r.wait >= 600).length,
+      unanswered: rs.length - answered.length,
+      median: median(answered.map((r) => r.wait)),
+      onTime: answered.filter((r) => r.wait <= thr).length,
+      answered: answered.length,
+    });
+  }
+  return out;
 }
 
 function group(list, key) {
@@ -123,13 +168,19 @@ export async function interactionReport(sock, groups, chats, { days = 7, thresho
     normalized.set(g.id, out);
   }
 
+  let dataSince = null;
+  for (const list of normalized.values()) if (list.length && (dataSince == null || list[0].ts < dataSince)) dataSince = list[0].ts;
   const now = Date.now() / 1000;
   const since = now - days * 86400;
   const thr = threshold * 60;
   const { requests, teamMsgs } = detect(groups, normalized, team);
-  const reqs = requests
-    .filter((r) => r.start >= since)
-    .map((r) => ({ ...r, wait: workSeconds(r.start, r.answeredAt ?? now) }));
+  const withWait = (r) => ({ ...r, wait: workSeconds(r.start, r.answeredAt ?? now) });
+  const reqs = requests.filter((r) => r.start >= since).map(withWait);
+  // Periodo anterior de la misma duracion, para comparar tendencias
+  const prevReqs = requests.filter((r) => r.start >= since - days * 86400 && r.start < since).map(withWait);
+  const prevBy = (key) => group(prevReqs, key);
+  // Serie diaria de los ultimos dias (para graficas de tendencia)
+  const trendReqs = requests.filter((r) => r.start >= now - TREND_DAYS * 86400).map(withWait);
   const recentTeam = teamMsgs.filter(({ m }) => m.ts >= since);
 
   const nameOf = (jid) =>
@@ -145,6 +196,7 @@ export async function interactionReport(sock, groups, chats, { days = 7, thresho
   });
 
   // Por grupo, con quien del equipo respondio en cada uno
+  const prevGroup = prevBy((r) => r.group.id);
   const byGroup = [...group(reqs, (r) => r.group.id)].map(([id, list]) => {
     const answered = list.filter((r) => r.answeredAt);
     return {
@@ -156,6 +208,8 @@ export async function interactionReport(sock, groups, chats, { days = 7, thresho
       fast: answered.filter((r) => r.wait < 300).length,
       mid: answered.filter((r) => r.wait >= 300 && r.wait < 600).length,
       slow: answered.filter((r) => r.wait >= 600).length,
+      prev: summarize(prevGroup.get(id) ?? [], thr),
+      daily: dailyMedians(trendReqs.filter((r) => r.answeredAt && r.group.id === id), now),
       team: [...group(answered, (r) => r.responder)]
         .map(([jid, l]) => ({ name: nameOf(jid), responses: l.length, median: median(l.map((r) => r.wait)) }))
         .sort((a, b) => b.responses - a.responses),
@@ -165,6 +219,7 @@ export async function interactionReport(sock, groups, chats, { days = 7, thresho
   // Por persona del equipo
   const responses = reqs.filter((r) => r.answeredAt);
   const memberKeys = new Set(['me', ...team]);
+  const prevMember = prevBy((r) => r.responder ?? '');
   const byMember = [...memberKeys]
     .map((jid) => {
       const mine = responses.filter((r) => r.responder === jid);
@@ -196,6 +251,8 @@ export async function interactionReport(sock, groups, chats, { days = 7, thresho
               .map((r) => ({ requester: nameOf(r.requester), text: r.text, start: r.start, answeredAt: r.answeredAt, wait: r.wait })),
           }))
           .sort((a, b) => b.count - a.count || b.max - a.max),
+        prev: summarizeAnswered(prevMember.get(jid) ?? []),
+        daily: dailyMedians(trendReqs.filter((r) => r.answeredAt && r.responder === jid), now),
         messages: msgs.length,
         groups: new Set(msgs.map(({ g }) => g.id)).size,
         clients: Object.fromEntries([...group(mine, (r) => r.group.client)].map(([c, l]) => [c, l.length])),
@@ -247,12 +304,13 @@ export async function interactionReport(sock, groups, chats, { days = 7, thresho
       wait: r.wait,
     }));
 
-  const withSender = [...normalized.values()].flat();
   return {
     days,
     threshold,
     workHours: WORK_HOURS,
-    dataSince: withSender.length ? Math.min(...withSender.map((m) => m.ts)) : null,
+    dataSince,
+    // El periodo anterior solo se compara si hay datos con remitente de todo ese periodo
+    prevComplete: dataSince != null && since - days * 86400 >= dataSince,
     teamSize: memberKeys.size,
     totals: {
       ...summarize(reqs, thr),
@@ -261,7 +319,9 @@ export async function interactionReport(sock, groups, chats, { days = 7, thresho
         Proveedor: summarize(reqs.filter((r) => counterpart(r) === 'Proveedor'), thr),
       },
       teamMessages: recentTeam.length,
+      prev: summarize(prevReqs, thr),
     },
+    trend: dailyTrend(trendReqs, thr, now),
     byClient: byClient.sort((a, b) => b.requests - a.requests),
     byGroup,
     byMember,

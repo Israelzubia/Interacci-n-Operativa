@@ -148,6 +148,32 @@
     .grp-resp { font-size: .82rem; padding: 4px 4px 8px; color: var(--muted); }
     .grp-resp strong { color: var(--text); }
     .grp-resp .who { display: inline-block; margin: 2px 10px 0 0; white-space: nowrap; }
+    /* Vista ejecutiva */
+    .kpi .delta { font-size: .8rem; color: var(--muted); margin-top: 2px; }
+    .kpi .delta b { font-weight: 600; margin-right: 3px; }
+    .kpi .delta.good b { color: var(--green); }
+    .kpi .delta.bad b { color: var(--red); }
+    .att-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
+    .att-cols h3 { font-size: .85rem; color: var(--muted); font-weight: 500; margin: 0 0 4px; text-transform: uppercase; letter-spacing: .04em; }
+    .att { display: grid; grid-template-columns: max-content 1fr max-content; gap: 2px 10px; align-items: center; padding: 9px 0; border-top: 1px solid var(--line); cursor: pointer; }
+    .att:hover .att-name { text-decoration: underline; }
+    .att .lvl { font-size: .72rem; font-weight: 600; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--c); white-space: nowrap; }
+    .att .lvl::before { content: ''; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--c); margin-right: 5px; vertical-align: 1px; }
+    .att .att-name { font-weight: 600; font-size: .9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .att .att-why { grid-column: 2 / 4; color: var(--muted); font-size: .8rem; }
+    .att svg { display: block; }
+    .att-good { color: var(--muted); font-size: .8rem; margin: 8px 0 0; }
+    .att-none { color: var(--muted); font-size: .85rem; padding: 8px 0; }
+    .chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+    .chart text { fill: var(--muted); font-size: 11px; font-family: system-ui, sans-serif; }
+    .chart .grid { stroke: var(--line); stroke-width: 1; }
+    .chart .hit { fill: transparent; }
+    .chart .hit:hover { fill: color-mix(in oklab, var(--text) 6%, transparent); }
+    details.drill { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 0 20px; margin-bottom: 16px; }
+    details.drill > summary { padding: 14px 0; font-weight: 600; display: block; }
+    details.drill > summary::before { content: '▸ '; color: var(--muted); }
+    details.drill[open] > summary::before { content: '▾ '; }
+    details.drill > .card { border: 0; border-top: 1px solid var(--line); border-radius: 0; padding: 16px 0; margin: 0; }
     [hidden] { display: none !important; }
   </style>
 </head>
@@ -231,7 +257,30 @@
     </div>
     <div class="kpis" id="interKpis"></div>
 
-    <section class="card viz">
+    <section class="card viz attention">
+      <h2>Requiere tu atención</h2>
+      <p class="hint">Grupos y personas del equipo con respuestas lentas, mensajes sin contestar o que empeoraron contra el periodo anterior. La línea muestra el tiempo mediano por día en los últimos 14 días; la línea punteada marca 10 min.</p>
+      <div class="att-cols">
+        <div><h3>Grupos</h3><div id="attGroups"></div><p class="att-good" id="goodGroups"></p></div>
+        <div><h3>Equipo</h3><div id="attTeam"></div><p class="att-good" id="goodTeam"></p></div>
+      </div>
+    </section>
+
+    <div class="grid2">
+      <section class="card viz">
+        <h2>Tiempo mediano de respuesta por día</h2>
+        <p class="hint">Fondo según el semáforo: verde menos de 5 min, amarillo de 5 a 9, rojo 10 o más.</p>
+        <div id="trendMedian" class="chart"></div>
+      </section>
+      <section class="card viz">
+        <h2>Solicitudes por día</h2>
+        <p class="hint">Cada barra se divide según qué tan rápido se respondió.</p>
+        <div class="legend" id="trendLegend"></div>
+        <div id="trendVolume" class="chart"></div>
+      </section>
+    </div>
+
+    <section class="card viz" style="margin-top:16px">
       <h2>Semáforo del equipo</h2>
       <p class="hint">Según el tiempo mediano de respuesta de cada persona en el periodo. La barra muestra cuántas de sus respuestas cayeron en cada color. Clic en una persona para ver los grupos donde respondió en rojo.</p>
       <div class="lights" id="lights"></div>
@@ -243,6 +292,8 @@
       <div id="pendingList"></div>
     </section>
 
+    <details class="drill">
+      <summary>Detalle por cliente, persona, horario y casos lentos</summary>
     <section class="card viz">
       <h2>Tiempo de respuesta por cliente</h2>
       <p class="hint">Una solicitud empieza con el primer mensaje de la contraparte y termina con el primer mensaje del equipo en el mismo grupo. Solo cuenta el horario de 4:00 a 23:59, todos los días; un mensaje en la noche empieza a contar a las 4:00.</p>
@@ -274,6 +325,7 @@
       <p class="hint">Para revisar casos puntuales.</p>
       <div class="scroll"><table class="data" id="slowTable"></table></div>
     </section>
+    </details>
   </div>
 
   <div id="viewPeople" hidden>

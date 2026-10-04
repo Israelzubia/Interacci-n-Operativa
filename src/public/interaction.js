@@ -68,14 +68,270 @@ function renderInterControls() {
   $('interNote').textContent = `Horario: ${report.workHours} · datos con remitente desde el ${since} · ${report.teamSize} personas en el equipo`;
 }
 
+// Tarjeta de indicador con comparacion contra el periodo anterior.
+// better: 'down' si bajar es bueno, 'up' si subir es bueno, null si es neutral
+function kpiDelta(label, value, sub, cur, prev, better, fmtDiff) {
+  const card = kpi(label, value, sub);
+  const line = el('div', null, 'delta');
+  if (prev == null || cur == null) {
+    line.textContent = 'Sin datos completos del periodo anterior para comparar';
+  } else {
+    const diff = cur - prev;
+    const arrow = diff > 0 ? '▲' : diff < 0 ? '▼' : '=';
+    if (better && diff) line.classList.add((diff < 0) === (better === 'down') ? 'good' : 'bad');
+    line.append(el('b', arrow), diff ? `${fmtDiff(Math.abs(diff))} vs periodo anterior` : 'Igual que el periodo anterior');
+  }
+  card.append(line);
+  return card;
+}
+
 function renderInterKpis() {
   const t = report.totals;
+  const p = t.prev;
+  const has = report.prevComplete;
   const thr = dur(report.threshold * 60);
+  const mins = (s) => dur(s).replace('< 1 min', 'menos de 1 min');
   $('interKpis').replaceChildren(
-    kpi('Solicitudes', num(t.requests), `${num(t.byKind.Cliente.requests)} de clientes · ${num(t.byKind.Proveedor.requests)} de proveedores`),
-    kpi('Respuesta mediana', dur(t.median), `promedio ${dur(t.avg)}`),
-    kpi(`Respondidas en ${thr} o menos`, `${pct(t.onTime, t.answered)}%`, `${num(t.onTime)} de ${num(t.answered)} respondidas`),
-    kpi('Sin respuesta', num(t.pending), `más de ${thr} esperando`),
+    kpiDelta('Respuesta mediana', dur(t.median), `promedio ${dur(t.avg)}`, t.median, has ? p.median : null, 'down', mins),
+    kpiDelta(`Respondidas en ${thr} o menos`, `${pct(t.onTime, t.answered)}%`, `${num(t.onTime)} de ${num(t.answered)} respondidas`,
+      pct(t.onTime, t.answered), has ? pct(p.onTime, p.answered) : null, 'up', (d) => `${d} puntos`),
+    kpiDelta('Sin respuesta', num(t.pending), `más de ${thr} esperando`, t.pending, has ? p.pending : null, 'down', (d) => num(d)),
+    kpiDelta('Solicitudes', num(t.requests), `${num(t.byKind.Cliente.requests)} de clientes · ${num(t.byKind.Proveedor.requests)} de proveedores`,
+      t.requests, has ? p.requests : null, null, (d) => num(d)),
+  );
+}
+
+// Mini grafica de linea con la mediana diaria; la linea punteada marca 10 min
+function spark(values, w = 96, h = 26) {
+  const ns = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(ns, 'svg');
+  svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
+  svg.setAttribute('width', w);
+  svg.setAttribute('height', h);
+  const max = Math.min(3600, Math.max(900, ...values.filter((v) => v != null)));
+  const x = (i) => 2 + (i / (values.length - 1)) * (w - 4);
+  const y = (v) => h - 2 - (Math.min(v, max) / max) * (h - 4);
+  const ref = document.createElementNS(ns, 'line');
+  Object.entries({ x1: 0, x2: w, y1: y(600), y2: y(600), stroke: 'var(--red)', 'stroke-dasharray': '2 3', 'stroke-width': 1, opacity: 0.7 })
+    .forEach(([k, v]) => ref.setAttribute(k, v));
+  svg.append(ref);
+  let d = '';
+  values.forEach((v, i) => {
+    if (v == null) return;
+    d += `${d && values[i - 1] != null ? 'L' : 'M'}${x(i).toFixed(1)},${y(v).toFixed(1)}`;
+  });
+  const path = document.createElementNS(ns, 'path');
+  Object.entries({ d, fill: 'none', stroke: 'var(--seq)', 'stroke-width': 2, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' })
+    .forEach(([k, v]) => path.setAttribute(k, v));
+  svg.append(path);
+  // Dias sueltos (sin vecinos con dato) como punto, para que no se pierdan
+  values.forEach((v, i) => {
+    if (v == null || values[i - 1] != null || values[i + 1] != null) return;
+    const dot = document.createElementNS(ns, 'circle');
+    Object.entries({ cx: x(i), cy: y(v), r: 1.5, fill: 'var(--seq)' }).forEach(([k, val]) => dot.setAttribute(k, val));
+    svg.append(dot);
+  });
+  const lastIdx = values.findLastIndex((v) => v != null);
+  if (lastIdx >= 0) {
+    const dot = document.createElementNS(ns, 'circle');
+    Object.entries({ cx: x(lastIdx), cy: y(values[lastIdx]), r: 3, fill: 'var(--seq)' }).forEach(([k, v]) => dot.setAttribute(k, v));
+    svg.append(dot);
+  }
+  return svg;
+}
+
+const LEVELS = { 3: ['Alta', 'red'], 2: ['Media', 'yellow'] };
+// Empeoro: la mediana subio al menos 3 min y 50% contra el periodo anterior
+const worsened = (cur, prev) => cur != null && prev != null && cur - prev >= 180 && cur >= prev * 1.5;
+const improved = (cur, prev) => cur != null && prev != null && prev - cur >= 120 && cur <= prev * 0.67;
+
+function attItem(level, name, reasons, values, onClick) {
+  const [label, color] = LEVELS[level];
+  const row = el('div', null, 'att');
+  const lvl = el('span', label, 'lvl');
+  lvl.style.setProperty('--c', `var(--${color})`);
+  row.append(lvl, el('span', name, 'att-name'), spark(values), el('span', reasons.join(' · '), 'att-why'));
+  row.addEventListener('click', onClick);
+  return row;
+}
+
+function renderInterAttention() {
+  const cmp = report.prevComplete;
+  const worse = (cur, prev) => cmp && worsened(cur, prev);
+  const better = (cur, prev) => cmp && improved(cur, prev);
+  // Grupos: pendientes ahora, mediana en rojo, muchas respuestas en rojo o empeoro
+  const groups = report.byGroup
+    .map((g) => {
+      let score = 0;
+      const why = [];
+      if (g.pending) { score += 2; why.push(`${g.pending} sin respuesta ahora`); }
+      if (g.answered >= 5 && g.median >= 600) { score += 2; why.push(`mediana ${dur(g.median)}`); }
+      if (g.answered >= 5 && g.slow / g.answered >= 0.4) { score += 1; why.push(`${pct(g.slow, g.answered)}% en rojo`); }
+      if (g.answered >= 5 && worse(g.median, g.prev.median)) { score += 2; why.push(`subió de ${dur(g.prev.median)} a ${dur(g.median)}`); }
+      return { g, score, why };
+    })
+    .filter((x) => x.score >= 2)
+    .sort((a, b) => b.score - a.score || b.g.pending - a.g.pending || (b.g.median ?? 0) - (a.g.median ?? 0))
+    .slice(0, 8);
+  $('attGroups').replaceChildren(
+    ...(groups.length
+      ? groups.map(({ g, score, why }) =>
+          attItem(score >= 4 ? 3 : 2, g.name, [`${g.client} · ${num(g.requests)} solicitudes`, ...why], g.daily, () => {
+            showView('groups');
+            applyFilter('Todos', 'Todos', g.name);
+            document.querySelector(`details[data-id="${CSS.escape(g.id)}"]`)?.setAttribute('open', '');
+          }))
+      : [el('div', 'Ningún grupo requiere atención en este periodo.', 'att-none')]),
+  );
+  const goodG = report.byGroup.filter((g) => g.answered >= 5 && better(g.median, g.prev.median));
+  $('goodGroups').textContent = goodG.length
+    ? `Mejoraron: ${goodG.slice(0, 4).map((g) => `${g.name} (${dur(g.prev.median)} → ${dur(g.median)})`).join(', ')}`
+    : '';
+
+  // Equipo: mediana en rojo, muchas respuestas en rojo o empeoro
+  const team = report.byMember
+    .filter((p) => p.responses >= 5)
+    .map((p) => {
+      let score = 0;
+      const why = [];
+      if (p.median >= 600) { score += 2; why.push(`mediana ${dur(p.median)}`); }
+      else if (p.median >= 300) { score += 1; why.push(`mediana ${dur(p.median)}`); }
+      if (p.slow / p.responses >= 0.4) { score += 1; why.push(`${pct(p.slow, p.responses)}% en rojo`); }
+      if (worse(p.median, p.prev.median)) { score += 2; why.push(`subió de ${dur(p.prev.median)} a ${dur(p.median)}`); }
+      return { p, score, why };
+    })
+    .filter((x) => x.score >= 2)
+    .sort((a, b) => b.score - a.score || b.p.median - a.p.median)
+    .slice(0, 8);
+  $('attTeam').replaceChildren(
+    ...(team.length
+      ? team.map(({ p, score, why }) =>
+          attItem(score >= 3 ? 3 : 2, p.name, [`${num(p.responses)} respuestas`, ...why], p.daily, () => {
+            const d = document.querySelector(`details.person[data-jid="${CSS.escape(p.jid)}"]`);
+            if (!d) return;
+            d.open = true;
+            d.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }))
+      : [el('div', 'Nadie del equipo requiere atención en este periodo.', 'att-none')]),
+  );
+  const goodT = report.byMember.filter((p) => p.responses >= 5 && better(p.median, p.prev.median));
+  $('goodTeam').textContent = goodT.length
+    ? `Mejoraron: ${goodT.slice(0, 4).map((p) => `${p.name} (${dur(p.prev.median)} → ${dur(p.median)})`).join(', ')}`
+    : '';
+  if (!cmp) {
+    $('goodGroups').textContent = 'La comparación contra el periodo anterior aparece cuando hay datos de todo ese periodo; mientras tanto usa la línea de cada fila.';
+  }
+}
+
+// --- Graficas de tendencia (SVG) ---
+const SVG_NS = 'http://www.w3.org/2000/svg';
+function svgEl(tag, attrs, text) {
+  const e = document.createElementNS(SVG_NS, tag);
+  for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+  if (text != null) e.textContent = text;
+  return e;
+}
+const dayLabel = (day) => {
+  const [, m, d] = day.split('-');
+  return `${Number(d)}/${Number(m)}`;
+};
+const dayLong = (day) =>
+  new Date(`${day}T12:00:00`).toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' });
+
+// Marco comun: ancho fijo en viewBox, eje x con fechas y zona de hover por dia
+function frame(series, height, yMax, yTicks, yFmt) {
+  const W = 560, H = height, L = 44, R = 8, T = 8, B = 22;
+  const svg = svgEl('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img' });
+  const bw = (W - L - R) / Math.max(1, series.length);
+  const x = (i) => L + bw * i + bw / 2;
+  const y = (v) => T + (1 - Math.min(v, yMax) / yMax) * (H - T - B);
+  for (const t of yTicks) {
+    svg.append(svgEl('line', { x1: L, x2: W - R, y1: y(t), y2: y(t), class: 'grid' }));
+    svg.append(svgEl('text', { x: L - 6, y: y(t) + 4, 'text-anchor': 'end' }, yFmt(t)));
+  }
+  const every = Math.ceil(series.length / 8);
+  series.forEach((d, i) => {
+    if (i % every === 0 || i === series.length - 1) {
+      svg.append(svgEl('text', { x: x(i), y: H - 6, 'text-anchor': 'middle' }, dayLabel(d.day)));
+    }
+  });
+  return { svg, x, y, bw, L, R, T, B, W, H };
+}
+
+function hitAreas(f, series, lines) {
+  series.forEach((d, i) => {
+    const r = svgEl('rect', { x: f.L + f.bw * i, y: f.T, width: f.bw, height: f.H - f.T - f.B, class: 'hit' });
+    tip(r, () => lines(d));
+    f.svg.append(r);
+  });
+}
+
+function renderTrendMedian() {
+  const series = report.trend;
+  const vals = series.map((d) => (d.median == null ? null : d.median / 60));
+  const top = Math.max(15, Math.ceil(Math.max(0, ...vals.filter((v) => v != null)) / 5) * 5);
+  const ticks = [0, 5, 10, ...(top > 10 ? [top] : [])];
+  const f = frame(series, 220, top, ticks, (t) => `${t} min`);
+  // Bandas del semaforo
+  for (const [from, to, c] of [[0, 5, 'green'], [5, 10, 'yellow'], [10, top, 'red']]) {
+    f.svg.insertBefore(svgEl('rect', { x: f.L, width: f.W - f.L - f.R, y: f.y(to), height: f.y(from) - f.y(to), fill: `var(--${c})`, opacity: 0.08 }), f.svg.firstChild);
+  }
+  let d = '';
+  vals.forEach((v, i) => {
+    if (v == null) return;
+    d += `${d && vals[i - 1] != null ? 'L' : 'M'}${f.x(i).toFixed(1)},${f.y(v).toFixed(1)}`;
+  });
+  f.svg.append(svgEl('path', { d, fill: 'none', stroke: 'var(--seq)', 'stroke-width': 2, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' }));
+  vals.forEach((v, i) => {
+    if (v != null) f.svg.append(svgEl('circle', { cx: f.x(i), cy: f.y(v), r: 4, fill: 'var(--seq)', stroke: 'var(--card)', 'stroke-width': 2 }));
+  });
+  hitAreas(f, series, (d) => [
+    dayLong(d.day),
+    `Mediana: ${dur(d.median)}`,
+    `${num(d.requests)} solicitudes · ${pct(d.onTime, d.answered)}% en ${dur(report.threshold * 60)} o menos`,
+  ]);
+  $('trendMedian').replaceChildren(f.svg);
+}
+
+const VOLUME_PARTS = [
+  ['fast', 'Menos de 5 min', 'var(--green)'],
+  ['mid', '5 a 9 min', 'var(--yellow)'],
+  ['slow', '10 min o más', 'var(--red)'],
+  ['unanswered', 'Sin respuesta', 'var(--muted)'],
+];
+
+function renderTrendVolume() {
+  const series = report.trend;
+  const max = Math.max(10, ...series.map((d) => d.requests));
+  const step = max > 200 ? 100 : max > 100 ? 50 : max > 40 ? 20 : 10;
+  const top = Math.ceil(max / step) * step;
+  const ticks = Array.from({ length: top / step + 1 }, (_, i) => i * step);
+  const f = frame(series, 220, top, ticks, (t) => num(t));
+  const barW = Math.min(28, f.bw * 0.7);
+  series.forEach((d, i) => {
+    let base = 0;
+    for (const [key, , color] of VOLUME_PARTS) {
+      const v = d[key];
+      if (!v) continue;
+      const y1 = f.y(base + v);
+      const h = f.y(base) - y1;
+      // 2 px de separacion entre segmentos
+      f.svg.append(svgEl('rect', { x: f.x(i) - barW / 2, y: y1, width: barW, height: Math.max(0, h - (base ? 2 : 0)), fill: color, rx: 2 }));
+      base += v;
+    }
+  });
+  hitAreas(f, series, (d) => [
+    dayLong(d.day),
+    `${num(d.requests)} solicitudes`,
+    ...VOLUME_PARTS.map(([key, label]) => `${label}: ${num(d[key])}`),
+  ]);
+  $('trendVolume').replaceChildren(f.svg);
+  $('trendLegend').replaceChildren(
+    ...VOLUME_PARTS.map(([, label, color]) => {
+      const sp = el('span', label);
+      sp.style.setProperty('--c', color);
+      return sp;
+    }),
   );
 }
 
@@ -209,6 +465,7 @@ function renderInterLights() {
         );
         tip(split, () => [p.name, `${num(p.fast)} en menos de 5 min`, `${num(p.mid)} de 5 a 9 min`, `${num(p.slow)} en 10 min o más`]);
         const d = el('details', null, 'person');
+        d.dataset.jid = p.jid;
         d.append(row, redList(p));
         box.append(d);
       }
@@ -309,6 +566,9 @@ function renderInterSlow() {
 function renderInteraction() {
   renderInterControls();
   renderInterKpis();
+  renderInterAttention();
+  renderTrendMedian();
+  renderTrendVolume();
   renderInterLights();
   renderInterPending();
   renderInterClients();
