@@ -143,6 +143,42 @@ function lamp(light) {
   return span;
 }
 
+// Desplegable con los grupos donde la persona respondio en rojo y cada tiempo de respuesta
+function redList(p) {
+  const box = el('div', null, 'reds');
+  if (!p.redGroups.length) {
+    box.append(el('div', 'Sin respuestas en rojo en este periodo.', 'muted'));
+    return box;
+  }
+  box.append(el('div', `${num(p.slow)} ${p.slow === 1 ? 'respuesta' : 'respuestas'} en rojo en ${num(p.redGroups.length)} ${p.redGroups.length === 1 ? 'grupo' : 'grupos'}`, 'muted'));
+  for (const g of p.redGroups) {
+    const rg = el('div', null, 'rg');
+    const head = el('div', null, 'rg-head');
+    const name = el('span', g.group);
+    name.append(el('span', g.client, 'chip'));
+    head.append(name, el('span', `${g.count} · máx. ${dur(g.max)}`));
+    head.title = 'Abrir el grupo';
+    head.addEventListener('click', () => {
+      showView('groups');
+      applyFilter('Todos', 'Todos', g.group);
+      document.querySelector(`details[data-id="${CSS.escape(g.groupId)}"]`)?.setAttribute('open', '');
+    });
+    rg.append(head);
+    for (const c of g.items) {
+      const row = el('div', null, 'case');
+      row.append(
+        el('span', `${fmt(c.start)} · ${c.requester}`),
+        el('span', dur(c.wait), 'w'),
+        el('span', c.text, 't'),
+      );
+      row.title = `Recibido ${fmt(c.start)} · respondido ${fmt(c.answeredAt)}\n${c.text}`;
+      rg.append(row);
+    }
+    box.append(rg);
+  }
+  return box;
+}
+
 function renderInterLights() {
   const people = report.byMember.filter((p) => p.responses);
   $('lights').replaceChildren(
@@ -157,7 +193,7 @@ function renderInterLights() {
       box.append(h, el('div', light.range, 'range'));
       if (!list.length) box.append(el('div', 'Nadie en este rango', 'empty'));
       for (const p of list) {
-        const row = el('div', null, 'person');
+        const row = el('summary');
         const split = el('div', null, 'split');
         for (const [k, n] of [['green', p.fast], ['yellow', p.mid], ['red', p.slow]]) {
           const seg = el('i');
@@ -172,7 +208,9 @@ function renderInterLights() {
           el('span', `${num(p.responses)} respuestas · ${pct(p.fast, p.responses)}% verde · ${pct(p.mid, p.responses)}% amarillo · ${pct(p.slow, p.responses)}% rojo`, 'sub'),
         );
         tip(split, () => [p.name, `${num(p.fast)} en menos de 5 min`, `${num(p.mid)} de 5 a 9 min`, `${num(p.slow)} en 10 min o más`]);
-        box.append(row);
+        const d = el('details', null, 'person');
+        d.append(row, redList(p));
+        box.append(d);
       }
       return box;
     }),

@@ -64,8 +64,9 @@ function detect(groups, chats, team) {
   return { requests, teamMsgs };
 }
 
-// Acuses de recibo que no esperan respuesta ("ok", "enterado", un emoji, un sticker)
-const ACK = /^(ok(ay|is)?|va|sale|listo|perfecto|enterad[oa]s?|gracias|muchas gracias|de acuerdo|copiado|recibido|excelente|s[ií]|claro|buen d[ií]a|buenas noches|jaja\w*|jeje\w*)[\s!.,👍🙏🏻🏼🏽]*$/i;
+// Acuses de recibo que no esperan respuesta: "ok", "hecho", "gracias team", "ok quedamos al pendiente",
+// un emoji o un sticker. Un mensaje corto que empieza con un acuse y no pregunta nada cuenta como acuse.
+const ACK = /^(ok(ay|ey|i|is)?|va|vale|sale|listo|perfecto|hecho|enterad[oa]s?|gracias|muchas gracias|mil gracias|de acuerdo|copiado|recibido|excelente|claro|[aá]nimo|s[ií]|buen d[ií]a|buenas noches|jaja\w*|jeje\w*)(?![\p{L}\d])[^?¿]{0,30}$/iu;
 const EMOJI_ONLY = /^[\p{Extended_Pictographic}\p{Emoji_Modifier}\u200d\ufe0f\s]+$/u;
 const isAck = (text) => text === '[sticker]' || EMOJI_ONLY.test(text) || ACK.test(text.trim());
 
@@ -164,6 +165,19 @@ export async function interactionReport(sock, groups, chats, { days = 7, thresho
         fast: mine.filter((r) => r.wait < 300).length,
         mid: mine.filter((r) => r.wait >= 300 && r.wait < 600).length,
         slow: mine.filter((r) => r.wait >= 600).length,
+        // Grupos donde respondio en rojo (10 min o mas), con cada caso
+        redGroups: [...group(mine.filter((r) => r.wait >= 600), (r) => r.group.id)]
+          .map(([, list]) => ({
+            group: list[0].group.name,
+            groupId: list[0].group.id,
+            client: list[0].group.client,
+            count: list.length,
+            max: Math.max(...list.map((r) => r.wait)),
+            items: list
+              .sort((a, b) => b.wait - a.wait)
+              .map((r) => ({ requester: nameOf(r.requester), text: r.text, start: r.start, answeredAt: r.answeredAt, wait: r.wait })),
+          }))
+          .sort((a, b) => b.count - a.count || b.max - a.max),
         messages: msgs.length,
         groups: new Set(msgs.map(({ g }) => g.id)).size,
         clients: Object.fromEntries([...group(mine, (r) => r.group.client)].map(([c, l]) => [c, l.length])),
