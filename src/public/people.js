@@ -78,6 +78,47 @@ function roleSelect(p) {
   return sel;
 }
 
+// Cambia el nombre por un campo de texto; Enter o salir del campo guarda, Esc cancela.
+// Dejarlo vacio regresa al nombre de la agenda o de WhatsApp.
+function editName(p, who) {
+  const input = document.createElement('input');
+  input.className = 'name-input';
+  input.value = p.customName ?? p.name ?? '';
+  input.placeholder = 'Nombre de la persona';
+  input.maxLength = 80;
+  who.firstChild.replaceWith(input);
+  input.focus();
+  input.select();
+  let done = false;
+  const finish = async (save) => {
+    if (done) return;
+    done = true;
+    const value = input.value.trim();
+    if (!save || value === (p.customName ?? '')) return renderPeople();
+    const res = await fetch('/api/people/name', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jid: p.jid, name: value }),
+    });
+    if (!res.ok) {
+      alert('No se pudo guardar el nombre');
+      return renderPeople();
+    }
+    if (value) {
+      p.customName = value;
+      p.name = value;
+      renderPeople();
+    } else {
+      loadPeople();
+    }
+  };
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') finish(true);
+    if (e.key === 'Escape') finish(false);
+  });
+  input.addEventListener('blur', () => finish(true));
+}
+
 function personRow(p) {
   const tr = document.createElement('tr');
 
@@ -85,9 +126,15 @@ function personRow(p) {
   const name = document.createElement('div');
   name.className = 'who';
   name.textContent = (p.name ?? 'Sin nombre') + (p.isMe ? ' (tú)' : '');
+  const edit = document.createElement('button');
+  edit.className = 'edit';
+  edit.textContent = '✎';
+  edit.title = 'Escribir el nombre a mano';
+  edit.addEventListener('click', () => editName(p, who));
+  name.append(edit);
   const phone = document.createElement('div');
   phone.className = 'phone';
-  phone.textContent = p.phone ?? 'Número no disponible';
+  phone.textContent = (p.phone ?? 'Número no disponible') + (p.customName ? ' · nombre escrito a mano' : '');
   who.append(name, phone);
 
   const groupsTd = document.createElement('td');
@@ -172,4 +219,17 @@ function showView(view) {
 
 $('views').addEventListener('click', (e) => e.target.dataset?.view && showView(e.target.dataset.view));
 $('peopleRefresh').addEventListener('click', loadPeople);
+$('contactsSync').addEventListener('click', async () => {
+  const b = $('contactsSync');
+  b.disabled = true;
+  b.textContent = 'Trayendo nombres…';
+  const res = await fetch('/api/contacts/sync', { method: 'POST' });
+  const out = await res.json().catch(() => ({}));
+  b.disabled = false;
+  b.textContent = 'Traer nombres de la agenda';
+  if (!res.ok) return alert(`No se pudieron traer los nombres: ${out.error ?? res.status}`);
+  // Los nombres se guardan con un segundo de retraso
+  setTimeout(loadPeople, 1500);
+  alert(`Se recibieron ${num(out.received)} contactos de la agenda.`);
+});
 for (const id of ['peopleFilter', 'groupFilter', 'pendingOnly']) $(id).addEventListener('input', renderPeople);

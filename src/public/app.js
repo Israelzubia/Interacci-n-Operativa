@@ -13,6 +13,9 @@ let groups = [];
 let client = 'Todos';
 let type = 'Todos';
 let loadedFor = null;
+// Tiempos de respuesta por grupo (de /api/interaction); usa dur, lamp, lightOf y el de interaction.js
+let resp = new Map();
+let respDays = 7;
 
 const post = (url) => fetch(url, { method: 'POST' });
 
@@ -22,7 +25,119 @@ async function loadGroups() {
   groups = await res.json();
   renderDashboard();
   renderGroups();
+  loadResponse();
   return true;
+}
+
+async function loadResponse() {
+  const res = await fetch(`/api/interaction?days=${respDays}`);
+  const report = res.ok ? await res.json() : null;
+  if (!report) return;
+  resp = new Map(report.byGroup.map((g) => [g.id, g]));
+  renderGroups();
+}
+
+// Grupos que pasan los filtros de cliente, tipo y busqueda
+function visibleGroups() {
+  const q = $('filter').value.trim().toLowerCase();
+  return groups.filter(
+    (g) => (client === 'Todos' || g.client === client) && (type === 'Todos' || g.type === type) && g.name.toLowerCase().includes(q),
+  );
+}
+
+function openGroup(g) {
+  applyFilter('Todos', 'Todos', g.name);
+  document.querySelector(`details[data-id="${CSS.escape(g.id)}"]`)?.setAttribute('open', '');
+}
+
+function splitBar(r) {
+  const split = el('div', null, 'split');
+  for (const [k, n] of [['green', r.fast], ['yellow', r.mid], ['red', r.slow]]) {
+    const seg = el('i');
+    seg.style.flex = String(n);
+    seg.style.background = `var(--${k})`;
+    split.append(seg);
+  }
+  return split;
+}
+
+function renderResponse() {
+  $('respCard').hidden = !resp.size;
+  $('respDays').replaceChildren(
+    ...[[1, '24 h'], [7, '7 días'], [30, '30 días']].map(([d, label]) => {
+      const b = el('button', label);
+      b.classList.toggle('active', d === respDays);
+      b.addEventListener('click', () => {
+        respDays = d;
+        loadResponse();
+      });
+      return b;
+    }),
+  );
+  const shown = visibleGroups().filter((g) => g.type !== 'Interno');
+  const rows = shown
+    .map((g) => resp.get(g.id))
+    .filter((r) => r?.answered)
+    .sort((a, b) => b.median - a.median);
+  const head = el('tr');
+  for (const [label, n] of [[''], ['Grupo'], ['Mediana', 1], ['Respuestas'], ['Solicitudes', 1], ['Promedio', 1], ['Sin respuesta', 1]]) {
+    head.append(el('th', label, n ? 'num' : ''));
+  }
+  $('respTable').replaceChildren(
+    head,
+    ...rows.map((r) => {
+      const tr = el('tr', null, 'click');
+      const light = lightOf(r);
+      const lampTd = el('td');
+      if (light) lampTd.append(lamp(light));
+      const bar = el('td');
+      bar.append(splitBar(r));
+      tip(bar, () => [r.name, `${num(r.fast)} en menos de 5 min`, `${num(r.mid)} de 5 a 9 min`, `${num(r.slow)} en 10 min o más`]);
+      const nameTd = el('td', null, 'wrap');
+      nameTd.append(el('div', r.name), el('div', `${r.client} · ${r.type}`, 'phone'));
+      const med = el('td', dur(r.median), 'num');
+      med.style.fontWeight = '600';
+      tr.append(
+        lampTd,
+        nameTd,
+        med,
+        bar,
+        el('td', num(r.requests), 'num'),
+        el('td', dur(r.avg), 'num'),
+        el('td', num(r.pending), r.pending ? 'num warn' : 'num'),
+      );
+      tr.addEventListener('click', () => openGroup(groups.find((g) => g.id === r.id) ?? r));
+      return tr;
+    }),
+  );
+  const quiet = shown.length - rows.length;
+  $('respNote').textContent = rows.length
+    ? quiet ? `${quiet} grupos con clientes o proveedores sin solicitudes respondidas en el periodo.` : ''
+    : 'No hay solicitudes respondidas con estos filtros en el periodo.';
+}
+
+// Resumen de respuesta dentro de un grupo desplegado
+function groupResponse(g) {
+  const r = resp.get(g.id);
+  const div = el('div', null, 'grp-resp');
+  if (!r) {
+    div.textContent = `Sin solicitudes de clientes o proveedores en ${respDays === 1 ? '24 h' : `${respDays} días`}.`;
+    return div;
+  }
+  const light = lightOf(r);
+  if (light) div.append(lamp(light));
+  const head = el('strong', `Respuesta mediana ${dur(r.median)}`);
+  div.append(head, ` · promedio ${dur(r.avg)} · ${num(r.requests)} solicitudes · ${num(r.pending)} sin respuesta`);
+  const team = el('div');
+  for (const t of r.team.slice(0, 8)) {
+    const who = el('span', null, 'who');
+    const l = lightOf(t);
+    if (l) who.append(lamp(l));
+    who.append(`${t.name}: ${dur(t.median)} (${num(t.responses)})`);
+    team.append(who);
+  }
+  div.append(team);
+  return div;
 }
 
 const num = (n) => n.toLocaleString('es-MX');
@@ -243,8 +358,17 @@ function groupItem(g) {
   meta.textContent = g.messageCount
     ? `${num(g.messages24h)} en 24 h · último ${fmt(g.lastMessageAt)} · ${g.participants} integrantes`
     : `${g.participants} integrantes`;
+  const r = resp.get(g.id);
+  if (r?.answered) {
+    const light = lightOf(r);
+    const rt = el('span', ` resp. ${dur(r.median)}`, 'chip');
+    if (light) rt.prepend(lamp(light));
+    rt.title = 'Tiempo mediano de respuesta del equipo';
+    name.append(rt);
+  }
   head.append(name, meta);
   d.append(head);
+  if (g.type !== 'Interno') d.append(groupResponse(g));
   if (g.messageCount) {
     const box = document.createElement('div');
     box.className = 'msgs';
@@ -286,6 +410,7 @@ function renderGroups() {
   $('withoutTitle').textContent = `Sin mensajes (${without.length})`;
   $('withList').replaceChildren(...withMsgs.map(groupItem));
   $('withoutList').replaceChildren(...without.map(groupItem));
+  renderResponse();
 }
 
 async function refresh() {
@@ -298,7 +423,7 @@ async function refresh() {
   $('connectBtn').hidden = s.status !== 'disconnected';
   $('groupsCard').hidden = s.status !== 'connected';
   $('views').hidden = s.status !== 'connected';
-  if (s.status !== 'connected') $('dashboard').hidden = true;
+  if (s.status !== 'connected') $('dashboard').hidden = $('respCard').hidden = true;
 
   // Carga los grupos una vez por sesion conectada; reintenta si aun no estan listos
   if (s.status === 'connected' && loadedFor !== s.user?.id && (await loadGroups())) {

@@ -5,7 +5,7 @@ const FILE = 'data/people.json';
 export const ROLES = ['Equipo', 'Cliente', 'Proveedor'];
 
 // roles: jid -> rol confirmado por el usuario
-// names: jid -> { contact: nombre en la agenda, push: nombre que la persona se puso }
+// names: jid -> { custom: nombre escrito a mano, contact: nombre en la agenda, push: nombre que la persona se puso }
 const saved = { roles: {}, names: {} };
 let timer = null;
 
@@ -32,9 +32,18 @@ export function rememberName(jid, { contact, push } = {}) {
   if (!jid || (!contact && !push)) return;
   const key = jidNormalizedUser(jid);
   const prev = saved.names[key] ?? {};
-  const next = { contact: contact || prev.contact, push: push || prev.push };
+  const next = { ...prev, contact: contact || prev.contact, push: push || prev.push };
   if (next.contact === prev.contact && next.push === prev.push) return;
   saved.names[key] = next;
+  persist();
+}
+
+// Nombre escrito a mano; tiene prioridad sobre la agenda y WhatsApp. Vacio lo quita.
+export function setName(jid, name) {
+  if (!jid) throw new Error('Falta la persona');
+  const custom = String(name ?? '').trim().slice(0, 80);
+  const { custom: _old, ...rest } = saved.names[jid] ?? {};
+  saved.names[jid] = custom ? { ...rest, custom } : rest;
   persist();
 }
 
@@ -80,7 +89,7 @@ export const displayName = (jid) => nameOf(jid);
 function nameOf(...jids) {
   for (const jid of jids) {
     const n = saved.names[jid];
-    if (n?.contact || n?.push) return n.contact || n.push;
+    if (n?.custom || n?.contact || n?.push) return n.custom || n.contact || n.push;
   }
   return null;
 }
@@ -127,6 +136,7 @@ export async function listPeople(sock, groups, chats) {
       return {
         jid: p.jid,
         name: nameOf(p.jid, ...p.aliases) ?? p.pushFallback ?? null,
+        customName: saved.names[p.jid]?.custom ?? null,
         phone: isPnUser(p.jid) ? `+${p.jid.split('@')[0]}` : null,
         isMe: p.isMe,
         groupCount: p.groups.length,

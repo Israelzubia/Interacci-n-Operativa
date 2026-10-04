@@ -80,6 +80,9 @@
     table.people { margin-top: 8px; }
     table.people td { vertical-align: middle; font-size: .9rem; }
     table.people .who { font-weight: 500; }
+    table.people .edit { border: 0; background: none; padding: 0 4px; margin-left: 4px; color: var(--muted); font-size: .85rem; }
+    table.people .edit:hover { color: var(--text); }
+    table.people .name-input { margin: 0 0 2px; padding: 4px 8px; font-size: .9rem; max-width: 260px; }
     table.people .phone { color: var(--muted); font-size: .8rem; font-variant-numeric: tabular-nums; }
     table.people td.num { font-variant-numeric: tabular-nums; }
     table.people select { width: auto; padding: 4px 8px; font-size: .85rem; }
@@ -136,6 +139,15 @@
     .split { grid-column: 1 / -1; display: flex; height: 6px; border-radius: 3px; overflow: hidden; background: var(--track); gap: 1px; }
     .split i { display: block; }
     .lamp { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--c); margin-right: 6px; vertical-align: 0; }
+    /* Tiempo de respuesta en grupos */
+    #respTable tr.click { cursor: pointer; }
+    #respTable tr.click:hover td { background: var(--track); }
+    #respTable .split { display: flex; width: 90px; }
+    #respTable .phone { color: var(--muted); font-size: .78rem; }
+    #respTable td.wrap { min-width: 160px; }
+    .grp-resp { font-size: .82rem; padding: 4px 4px 8px; color: var(--muted); }
+    .grp-resp strong { color: var(--text); }
+    .grp-resp .who { display: inline-block; margin: 2px 10px 0 0; white-space: nowrap; }
     [hidden] { display: none !important; }
   </style>
 </head>
@@ -183,6 +195,16 @@
     </section>
   </div>
   <div id="tip" hidden></div>
+
+  <section class="card viz" id="respCard" hidden>
+    <div class="row">
+      <h2>Tiempo de respuesta del equipo por grupo</h2>
+      <span class="tabs" id="respDays" style="margin:0"></span>
+    </div>
+    <p class="hint">Grupos con clientes y proveedores, del más lento al más rápido. Semáforo según la mediana: verde menos de 5 min, amarillo de 5 a 9, rojo 10 o más. Respeta los filtros de la lista y la búsqueda. Clic para abrir el grupo.</p>
+    <div class="scroll"><table class="data" id="respTable"></table></div>
+    <p class="muted" id="respNote" style="font-size:.8rem;margin:8px 0 0"></p>
+  </section>
 
   <section class="card" id="groupsCard" hidden>
     <div class="row">
@@ -259,7 +281,10 @@
     <section class="card">
       <div class="row">
         <strong id="peopleTitle">Personas</strong>
-        <button id="peopleRefresh">Actualizar</button>
+        <span>
+          <button id="contactsSync" title="Vuelve a pedir a WhatsApp los nombres de tu agenda">Traer nombres de la agenda</button>
+          <button id="peopleRefresh">Actualizar</button>
+        </span>
       </div>
       <p class="hint muted" style="margin:6px 0 0;font-size:.85rem">
         El rol se sugiere según los grupos donde participa cada persona. Revísalo y confírmalo;

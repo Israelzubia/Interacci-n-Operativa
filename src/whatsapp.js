@@ -78,6 +78,29 @@ export async function connect() {
   });
 }
 
+// Vuelve a pedir a WhatsApp la agenda del telefono (coleccion de app state donde viven los contactos)
+// desde cero, para guardar el nombre con el que cada persona esta registrada. No requiere volver a vincular.
+const CONTACTS_COLLECTION = 'critical_unblock_low';
+export async function syncContacts() {
+  if (!sock || state.status !== 'connected') throw new Error('WhatsApp no está conectado');
+  const { keys } = sock.authState;
+  const saved = await keys.get('app-state-sync-version', [CONTACTS_COLLECTION]);
+  let received = 0;
+  const count = (contacts) => (received += contacts.filter((c) => c.name).length);
+  sock.ev.on('contacts.upsert', count);
+  try {
+    await keys.set({ 'app-state-sync-version': { [CONTACTS_COLLECTION]: null } });
+    await sock.resyncAppState([CONTACTS_COLLECTION], true);
+  } catch (err) {
+    // Si falla, deja la version como estaba
+    await keys.set({ 'app-state-sync-version': { [CONTACTS_COLLECTION]: saved[CONTACTS_COLLECTION] ?? null } });
+    throw err;
+  } finally {
+    sock.ev.off('contacts.upsert', count);
+  }
+  return { received };
+}
+
 export async function logout() {
   await sock?.logout().catch(() => {});
   state.status = 'disconnected';

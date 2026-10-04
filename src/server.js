@@ -2,9 +2,9 @@ import express from 'express';
 import { fileURLToPath } from 'node:url';
 import { fetchGroups, listGroups } from './groups.js';
 import { interactionReport, MAX_THRESHOLD } from './interaction.js';
-import { listPeople, setRole } from './people.js';
+import { listPeople, setName, setRole } from './people.js';
 import { allChats, getMessages } from './store.js';
-import { connect, getSocket, getState, logout } from './whatsapp.js';
+import { connect, getSocket, getState, logout, syncContacts } from './whatsapp.js';
 
 const PORT = process.env.PORT || 3000;
 const app = express();
@@ -45,6 +45,16 @@ app.get('/api/interaction', async (req, res) => {
   }
 });
 
+// Escribe (o quita, con name vacio) el nombre de una persona a mano
+app.post('/api/people/name', (req, res) => {
+  try {
+    setName(req.body.jid, req.body.name);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
 // Asigna (o quita, con role null) el rol de una o varias personas
 app.post('/api/people/role', (req, res) => {
   try {
@@ -53,6 +63,15 @@ app.post('/api/people/role', (req, res) => {
     res.json({ ok: true });
   } catch (err) {
     res.status(400).json({ error: err.message });
+  }
+});
+
+// Trae de nuevo los nombres de la agenda del telefono
+app.post('/api/contacts/sync', async (_req, res) => {
+  try {
+    res.json(await syncContacts());
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 

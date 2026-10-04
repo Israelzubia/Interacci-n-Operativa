@@ -144,6 +144,24 @@ export async function interactionReport(sock, groups, chats, { days = 7, thresho
     return { client, type, groups: new Set(list.map((r) => r.group.id)).size, ...summarize(list, thr) };
   });
 
+  // Por grupo, con quien del equipo respondio en cada uno
+  const byGroup = [...group(reqs, (r) => r.group.id)].map(([id, list]) => {
+    const answered = list.filter((r) => r.answeredAt);
+    return {
+      id,
+      name: list[0].group.name,
+      client: list[0].group.client,
+      type: list[0].group.type,
+      ...summarize(list, thr),
+      fast: answered.filter((r) => r.wait < 300).length,
+      mid: answered.filter((r) => r.wait >= 300 && r.wait < 600).length,
+      slow: answered.filter((r) => r.wait >= 600).length,
+      team: [...group(answered, (r) => r.responder)]
+        .map(([jid, l]) => ({ name: nameOf(jid), responses: l.length, median: median(l.map((r) => r.wait)) }))
+        .sort((a, b) => b.responses - a.responses),
+    };
+  });
+
   // Por persona del equipo
   const responses = reqs.filter((r) => r.answeredAt);
   const memberKeys = new Set(['me', ...team]);
@@ -245,6 +263,7 @@ export async function interactionReport(sock, groups, chats, { days = 7, thresho
       teamMessages: recentTeam.length,
     },
     byClient: byClient.sort((a, b) => b.requests - a.requests),
+    byGroup,
     byMember,
     hours,
     pending,
