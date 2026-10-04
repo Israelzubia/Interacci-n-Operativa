@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Interacción Operativa</title>
   <style>
-    :root { --bg: #f6f7f9; --card: #fff; --text: #1c1f24; --muted: #6b7280; --line: #e5e7eb; --accent: #128c7e; --danger: #b42318; --seq: #2a78d6; --track: #f0efec; }
+    :root { --bg: #f6f7f9; --card: #fff; --text: #1c1f24; --muted: #6b7280; --line: #e5e7eb; --accent: #128c7e; --danger: #b42318; --seq: #2a78d6; --alt: #d9822b; --track: #f0efec; --green: #1f9d55; --yellow: #e0b000; --red: #d92d20; }
     @media (prefers-color-scheme: dark) {
-      :root { --bg: #14171a; --card: #1e2226; --text: #eceff1; --muted: #9aa4ad; --line: #2c3238; --accent: #25d366; --danger: #f97066; --seq: #3987e5; --track: #2c3238; }
+      :root { --bg: #14171a; --card: #1e2226; --text: #eceff1; --muted: #9aa4ad; --line: #2c3238; --accent: #25d366; --danger: #f97066; --seq: #3987e5; --alt: #e8a25a; --track: #2c3238; --green: #3ccb7f; --yellow: #f5c518; --red: #f97066; }
     }
     * { box-sizing: border-box; }
     body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 system-ui, sans-serif; }
@@ -89,6 +89,42 @@
       .filters { grid-template-columns: 1fr; }
       table.people th:nth-child(3), table.people td:nth-child(3) { display: none; }
     }
+    /* Vista de interaccion */
+    .controls { display: flex; gap: 16px; flex-wrap: wrap; align-items: center; margin-bottom: 16px; }
+    .controls label { font-size: .85rem; color: var(--muted); display: flex; align-items: center; gap: 8px; }
+    .controls .tabs { margin: 0; }
+    .controls .note { font-size: .8rem; color: var(--muted); margin-left: auto; }
+    .scroll { overflow-x: auto; }
+    table.data td, table.data th { font-size: .88rem; white-space: nowrap; }
+    table.data td.num { font-variant-numeric: tabular-nums; }
+    table.data td.wrap { white-space: normal; min-width: 180px; }
+    .meter { display: inline-block; width: 60px; height: 8px; background: var(--track); border-radius: 4px; vertical-align: middle; margin-right: 6px; overflow: hidden; }
+    .meter i { display: block; height: 100%; background: var(--seq); }
+    .warn { color: var(--danger); font-weight: 600; }
+    .cols { display: grid; grid-template-columns: repeat(24, 1fr); gap: 3px; align-items: end; height: 150px; }
+    .cols .col { display: flex; gap: 1px; align-items: end; height: 100%; }
+    .cols .col i { flex: 1; border-radius: 2px 2px 0 0; min-height: 1px; }
+    .cols .col i.a { background: var(--seq); }
+    .cols .col i.b { background: var(--alt); }
+    .axis { display: grid; grid-template-columns: repeat(24, 1fr); gap: 3px; font-size: .68rem; color: var(--muted); text-align: center; margin-top: 4px; }
+    .legend { display: flex; gap: 14px; font-size: .8rem; color: var(--muted); margin-bottom: 10px; }
+    .legend span::before { content: ''; display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; background: var(--c); }
+    .pend { padding: 10px 0; border-bottom: 1px solid var(--line); cursor: pointer; }
+    .pend:last-child { border-bottom: 0; }
+    .pend .top { display: flex; justify-content: space-between; gap: 10px; font-size: .88rem; }
+    .pend .txt { color: var(--muted); font-size: .85rem; white-space: pre-wrap; word-break: break-word; max-height: 3em; overflow: hidden; }
+    /* Semaforo */
+    .lights { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+    .light { border: 1px solid var(--line); border-top: 4px solid var(--c); border-radius: 8px; padding: 10px 12px; }
+    .light h3 { margin: 0 0 2px; font-size: .95rem; display: flex; align-items: center; justify-content: space-between; }
+    .light .range { color: var(--muted); font-size: .78rem; margin-bottom: 8px; }
+    .light .person { display: grid; grid-template-columns: 1fr max-content; gap: 2px 8px; padding: 6px 0; border-top: 1px solid var(--line); font-size: .86rem; }
+    .light .person .med { font-weight: 600; font-variant-numeric: tabular-nums; text-align: right; }
+    .light .person .sub { grid-column: 1 / -1; color: var(--muted); font-size: .75rem; }
+    .light .empty { color: var(--muted); font-size: .85rem; }
+    .split { grid-column: 1 / -1; display: flex; height: 6px; border-radius: 3px; overflow: hidden; background: var(--track); gap: 1px; }
+    .split i { display: block; }
+    .lamp { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--c); margin-right: 6px; vertical-align: 0; }
     [hidden] { display: none !important; }
   </style>
 </head>
@@ -110,6 +146,7 @@
 
   <nav class="tabs views" id="views" hidden>
     <button data-view="groups" class="active">Grupos</button>
+    <button data-view="interaction">Interacción</button>
     <button data-view="people">Personas</button>
   </nav>
 
@@ -151,6 +188,61 @@
   </section>
   </div>
 
+  <div id="viewInteraction" hidden>
+    <div class="controls">
+      <label>Periodo <span class="tabs" id="daysTabs"></span></label>
+      <label>Sin respuesta después de <select id="threshold" style="width:auto">
+        <option value="5">5 min</option><option value="10" selected>10 min</option>
+      </select></label>
+      <span class="note" id="interNote"></span>
+    </div>
+    <div class="kpis" id="interKpis"></div>
+
+    <section class="card viz">
+      <h2>Semáforo del equipo</h2>
+      <p class="hint">Según el tiempo mediano de respuesta de cada persona en el periodo. La barra muestra cuántas de sus respuestas cayeron en cada color.</p>
+      <div class="lights" id="lights"></div>
+    </section>
+
+    <section class="card viz" id="pendingCard">
+      <h2 id="pendingTitle">Sin respuesta</h2>
+      <p class="hint">Mensajes de clientes y proveedores que el equipo no ha contestado. Clic para abrir el grupo.</p>
+      <div id="pendingList"></div>
+    </section>
+
+    <section class="card viz">
+      <h2>Tiempo de respuesta por cliente</h2>
+      <p class="hint">Una solicitud empieza con el primer mensaje de la contraparte y termina con el primer mensaje del equipo en el mismo grupo. Solo cuenta el horario de 4:00 a 23:59, todos los días; un mensaje en la noche empieza a contar a las 4:00.</p>
+      <div class="scroll"><table class="data" id="clientTable"></table></div>
+    </section>
+
+    <section class="card viz">
+      <h2>Equipo</h2>
+      <p class="hint">Respuestas por persona: cuántas solicitudes cerró y en cuánto tiempo. "Citadas" son respuestas con la función responder de WhatsApp.</p>
+      <div class="scroll"><table class="data" id="teamTable"></table></div>
+    </section>
+
+    <section class="card viz">
+      <h2>Quién atiende a quién</h2>
+      <p class="hint">Solicitudes respondidas por cada persona del equipo, por cliente.</p>
+      <div class="scroll"><table class="matrix" id="whoMatrix"></table></div>
+    </section>
+
+    <section class="card viz">
+      <h2>Actividad por hora</h2>
+      <p class="hint">Mensajes en grupos con clientes y proveedores, por hora del día.</p>
+      <div class="legend"><span style="--c:var(--alt)">Clientes y proveedores</span><span style="--c:var(--seq)">Equipo</span></div>
+      <div class="cols" id="hourCols"></div>
+      <div class="axis" id="hourAxis"></div>
+    </section>
+
+    <section class="card viz">
+      <h2>Respuestas más lentas</h2>
+      <p class="hint">Para revisar casos puntuales.</p>
+      <div class="scroll"><table class="data" id="slowTable"></table></div>
+    </section>
+  </div>
+
   <div id="viewPeople" hidden>
     <div class="kpis" id="peopleKpis"></div>
     <section class="card">
@@ -184,5 +276,6 @@
 </main>
 <script src="app.js"></script>
 <script src="people.js"></script>
+<script src="interaction.js"></script>
 </body>
 </html>

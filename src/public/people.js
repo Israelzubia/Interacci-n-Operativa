@@ -165,7 +165,9 @@ function showView(view) {
   for (const b of $('views').querySelectorAll('button')) b.classList.toggle('active', b.dataset.view === view);
   $('viewGroups').hidden = view !== 'groups';
   $('viewPeople').hidden = view !== 'people';
+  $('viewInteraction').hidden = view !== 'interaction';
   if (view === 'people' && !peopleLoaded) loadPeople();
+  if (view === 'interaction') loadInteraction();
 }
 
 $('views').addEventListener('click', (e) => e.target.dataset?.view && showView(e.target.dataset.view));

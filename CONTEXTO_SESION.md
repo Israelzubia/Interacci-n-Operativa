@@ -1,7 +1,7 @@
 # Contexto del proyecto · Interacción Operativa
 
 > Resumen de la sesión de trabajo con Claude Code (24–27 sep 2026) para continuar en una sesión nueva.
-> Repositorio: https://github.com/Israelzubia/Interacci-n-Operativa · rama `main` · último commit `b4777ed`.
+> Repositorio: https://github.com/Israelzubia/Interacci-n-Operativa · rama `main` · último commit (ver `git log`).
 
 ---
 
@@ -97,9 +97,9 @@ Plataforma local para **monitorear la operación de última milla de BDB** a tra
 
 1. ✅ Definir métricas: tiempo de respuesta, mensajes sin contestar, quién atiende a quién, carga por persona, horarios.
 2. ✅ **Guardar la identidad del remitente** (`sender`) y el mensaje citado (`quotedId`). Solo aplica a mensajes nuevos, desde el 27 sep; al 27 sep ya había unos 1,925 mensajes con remitente y 229 respuestas citadas.
-3. 🔄 **Directorio de personas**: construido. **El usuario debe revisar y confirmar roles.** Estado: 1,021 personas, 0 confirmadas.
-4. ⏳ **Detectar respuestas**: una cita (`quotedId`) es respuesta explícita; si no hay cita, se toma el primer mensaje del Equipo después de uno de un Cliente o Proveedor en el mismo grupo.
-5. ⏳ **Métricas en el panel**: tiempo de respuesta (mediana y promedio) por cliente, proveedor y persona; mensajes sin contestar después de X minutos; participación del equipo por cliente; actividad por hora.
+3. ✅ **Directorio de personas**: 25 personas confirmadas como Equipo (3 oct). El Equipo = confirmados + la cuenta propia; todos los demás cuentan como contraparte (Cliente o Proveedor según el tipo de grupo). Horario: todos los días de 4:00 a 23:59 (UTC-6); la noche (0:00–4:00) no cuenta en la espera; tiempo máximo sin respuesta: 10 min (opciones 5 y 10); se ignoran acuses como "ok", "enterado", emojis o stickers.
+4. ✅ **Detectar respuestas** (`src/interaction.js`, 3 oct): una cita (`quotedId`) es respuesta explícita; si no hay cita, se toma el primer mensaje del Equipo después de uno de un Cliente o Proveedor en el mismo grupo.
+5. ✅ **Métricas en el panel** (vista **Interacción**, `GET /api/interaction?days=&threshold=`): tiempo de respuesta (mediana y promedio) por cliente, proveedor y persona; mensajes sin contestar después de X minutos; participación del equipo por cliente; actividad por hora.
 6. ⏳ Alertas opcionales, por ejemplo un mensaje de cliente sin respuesta después de 30 minutos.
 
 **Aviso de privacidad:** se recomendó informar al equipo que se miden los tiempos de respuesta y revisar el aviso de privacidad con el área legal (LFPDPPP, México), porque se guardan datos de personas de clientes y proveedores.

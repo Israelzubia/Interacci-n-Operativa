@@ -1,6 +1,7 @@
 import express from 'express';
 import { fileURLToPath } from 'node:url';
 import { fetchGroups, listGroups } from './groups.js';
+import { interactionReport, MAX_THRESHOLD } from './interaction.js';
 import { listPeople, setRole } from './people.js';
 import { allChats, getMessages } from './store.js';
 import { connect, getSocket, getState, logout } from './whatsapp.js';
@@ -27,6 +28,18 @@ app.get('/api/people', async (_req, res) => {
   try {
     if (getState().status !== 'connected') return res.json([]);
     res.json(await listPeople(getSocket(), await fetchGroups(), allChats()));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Metricas de interaccion del equipo: ?days=7&threshold=10 (minutos, maximo 10)
+app.get('/api/interaction', async (req, res) => {
+  try {
+    if (getState().status !== 'connected') return res.json(null);
+    const days = Math.min(30, Math.max(1, Number(req.query.days) || 7));
+    const threshold = Math.min(MAX_THRESHOLD, Math.max(1, Number(req.query.threshold) || MAX_THRESHOLD));
+    res.json(await interactionReport(getSocket(), await fetchGroups(), allChats(), { days, threshold }));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

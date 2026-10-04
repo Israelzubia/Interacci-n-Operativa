@@ -47,7 +47,7 @@ export function setRole(jid, role) {
 }
 
 // Traduce ids internos (@lid) al numero de telefono cuando WhatsApp ya compartio la relacion
-function makeResolver(sock) {
+export function makeResolver(sock) {
   const cache = new Map();
   return async (jid) => {
     if (!jid) return null;
@@ -68,6 +68,14 @@ function suggest(p) {
   if (p.types.has('Clientes') && !p.types.has('Proveedores')) return 'Cliente';
   return null;
 }
+
+// Personas confirmadas como Equipo, con su jid ya traducido a numero
+export async function teamJids(resolve) {
+  const jids = Object.entries(saved.roles).filter(([, r]) => r === 'Equipo').map(([jid]) => jid);
+  return new Set(await Promise.all(jids.map(resolve)));
+}
+
+export const displayName = (jid) => nameOf(jid);
 
 function nameOf(...jids) {
   for (const jid of jids) {
