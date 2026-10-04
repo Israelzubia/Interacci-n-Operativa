@@ -437,6 +437,8 @@ function redList(p) {
 
 function renderInterLights() {
   const people = report.byMember.filter((p) => p.responses);
+  // Conserva abiertas las personas que estaban desplegadas
+  const open = new Set([...document.querySelectorAll('details.person[open]')].map((d) => d.dataset.jid));
   $('lights').replaceChildren(
     ...LIGHTS.map((light) => {
       const list = people.filter((p) => lightOf(p) === light).sort((a, b) => a.median - b.median);
@@ -466,6 +468,7 @@ function renderInterLights() {
         tip(split, () => [p.name, `${num(p.fast)} en menos de 5 min`, `${num(p.mid)} de 5 a 9 min`, `${num(p.slow)} en 10 min o más`]);
         const d = el('details', null, 'person');
         d.dataset.jid = p.jid;
+        d.open = open.has(p.jid);
         d.append(row, redList(p));
         box.append(d);
       }

@@ -397,6 +397,8 @@ function renderTabs(el, options, field, current, others, onPick) {
 }
 
 function renderGroups() {
+  // Conserva los grupos abiertos al volver a dibujar la lista (por ejemplo, en la actualizacion automatica)
+  const open = new Set([...document.querySelectorAll('#withList details[open], #withoutList details[open]')].map((d) => d.dataset.id));
   const byClient = (g) => client === 'Todos' || g.client === client;
   const byType = (g) => type === 'Todos' || g.type === type;
   renderTabs($('clientTabs'), CLIENTS, 'client', client, groups.filter(byType), (c) => (client = c));
@@ -410,6 +412,7 @@ function renderGroups() {
   $('withoutTitle').textContent = `Sin mensajes (${without.length})`;
   $('withList').replaceChildren(...withMsgs.map(groupItem));
   $('withoutList').replaceChildren(...without.map(groupItem));
+  for (const d of document.querySelectorAll('#withList details, #withoutList details')) if (open.has(d.dataset.id)) d.open = true;
   renderResponse();
 }
 
@@ -428,6 +431,7 @@ async function refresh() {
   // Carga los grupos una vez por sesion conectada; reintenta si aun no estan listos
   if (s.status === 'connected' && loadedFor !== s.user?.id && (await loadGroups())) {
     loadedFor = s.user?.id;
+    markUpdated();
   }
   if (s.status !== 'connected') loadedFor = null;
 }
@@ -439,3 +443,17 @@ $('logoutBtn').addEventListener('click', async () => { await post('/api/logout')
 
 refresh();
 setInterval(refresh, 2000);
+
+// Actualizacion automatica de los datos cada 10 minutos
+const AUTO_REFRESH_MIN = 10;
+function markUpdated() {
+  const time = new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
+  $('updated').textContent = `Actualizado ${time} · se actualiza cada ${AUTO_REFRESH_MIN} min`;
+}
+async function autoRefresh() {
+  if (!loadedFor) return;
+  await loadGroups();
+  if (!$('viewInteraction').hidden) await loadInteraction();
+  markUpdated();
+}
+setInterval(autoRefresh, AUTO_REFRESH_MIN * 60 * 1000);
