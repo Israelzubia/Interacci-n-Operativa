@@ -525,7 +525,7 @@ function renderInterWho() {
         const b = el('button', String(n));
         const tone = Math.round(6 + (n / max) * 84);
         b.style.background = `color-mix(in oklab, var(--seq) ${tone}%, var(--card))`;
-        b.style.color = tone > 50 ? '#fff' : 'var(--text)';
+        b.style.color = tone > 50 ? 'var(--on-seq)' : 'var(--text)';
         b.style.cursor = 'default';
         tip(b, () => [p.name, `${num(n)} solicitudes de ${c} respondidas`]);
         td.append(b);

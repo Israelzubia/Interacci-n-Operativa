@@ -239,7 +239,7 @@ function renderMatrix() {
       } else {
         const p = Math.round(6 + (msgs / max) * 84);
         b.style.background = `color-mix(in oklab, var(--seq) ${p}%, var(--card))`;
-        b.style.color = p > 50 ? '#fff' : 'var(--text)';
+        b.style.color = p > 50 ? 'var(--on-seq)' : 'var(--text)';
       }
       b.classList.toggle('sel', client === c && type === t);
       b.addEventListener('click', () => applyFilter(c, t));

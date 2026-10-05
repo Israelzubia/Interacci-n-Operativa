@@ -3,16 +3,30 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Interacción Operativa</title>
+  <title>Interacción Operativa · BDB Logística</title>
   <style>
-    :root { --bg: #f6f7f9; --card: #fff; --text: #1c1f24; --muted: #6b7280; --line: #e5e7eb; --accent: #128c7e; --danger: #b42318; --seq: #2a78d6; --alt: #d9822b; --track: #f0efec; --green: #1f9d55; --yellow: #e0b000; --red: #d92d20; }
+    /* Paleta BDB Logística: rojo #D41900, negro y blanco. Verde, amarillo y rojo de estado quedan para el semáforo. */
+    :root { --brand: #d41900; --bg: #f4f4f4; --card: #fff; --text: #111; --muted: #666; --line: #e3e3e3; --accent: #d41900; --danger: #b42318; --seq: #262626; --on-seq: #fff; --alt: #d41900; --track: #ededed; --green: #1f9d55; --yellow: #e0b000; --red: #d92d20; }
     @media (prefers-color-scheme: dark) {
-      :root { --bg: #14171a; --card: #1e2226; --text: #eceff1; --muted: #9aa4ad; --line: #2c3238; --accent: #25d366; --danger: #f97066; --seq: #3987e5; --alt: #e8a25a; --track: #2c3238; --green: #3ccb7f; --yellow: #f5c518; --red: #f97066; }
+      :root { --brand: #d41900; --bg: #111; --card: #1b1b1b; --text: #f0f0f0; --muted: #a3a3a3; --line: #2e2e2e; --accent: #d41900; --danger: #ff6b57; --seq: #d6d6d6; --on-seq: #111; --alt: #ff5a3c; --track: #2a2a2a; --green: #3ccb7f; --yellow: #f5c518; --red: #ff6b57; }
     }
     * { box-sizing: border-box; }
     body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 system-ui, sans-serif; }
     main { max-width: 980px; margin: 0 auto; padding: 24px 16px; }
-    h1 { font-size: 1.4rem; margin: 0 0 16px; }
+    /* Encabezado con la marca: siempre sobre blanco, como el logo */
+    .brandbar { position: relative; display: flex; align-items: center; gap: 18px; background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 14px 20px 18px; margin-bottom: 16px; overflow: hidden; }
+    .brandbar::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 5px; background: var(--brand); }
+    .brandbar img { height: 58px; width: auto; display: block; }
+    .brandbar .titles { border-left: 2px solid #111; padding-left: 18px; }
+    .brandbar h1 { font-size: 1.3rem; margin: 0; color: #111; letter-spacing: .01em; }
+    .brandbar .sub { color: #555; font-size: .85rem; }
+    .brandbar .stripes { margin-left: auto; align-self: stretch; width: 70px; background: repeating-linear-gradient(115deg, var(--brand) 0 6px, transparent 6px 12px); opacity: .9; }
+    @media (max-width: 640px) {
+      .brandbar { flex-wrap: wrap; gap: 10px; }
+      .brandbar img { height: 52px; }
+      .brandbar .titles { border-left: 0; padding-left: 0; width: 100%; }
+      .brandbar .stripes { display: none; }
+    }
     .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 20px; margin-bottom: 16px; }
     .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
     .muted { color: var(--muted); }
@@ -25,7 +39,7 @@
     th { color: var(--muted); font-weight: 500; font-size: .85rem; }
     td.num, th.num { text-align: right; }
     .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--muted); margin-right: 6px; }
-    .dot.on { background: var(--accent); }
+    .dot.on { background: var(--green); }
     .sec { margin: 20px 0 6px; font-size: .95rem; }
     details { border-bottom: 1px solid var(--line); }
     summary { cursor: pointer; padding: 9px 4px; display: flex; justify-content: space-between; gap: 12px; }
@@ -87,7 +101,7 @@
     table.people td.num { font-variant-numeric: tabular-nums; }
     table.people select { width: auto; padding: 4px 8px; font-size: .85rem; }
     table.people select.suggested { border-style: dashed; color: var(--muted); }
-    .ok { color: var(--accent); font-size: .8rem; margin-left: 6px; }
+    .ok { color: var(--green); font-size: .8rem; margin-left: 6px; }
     @media (max-width: 640px) {
       .filters { grid-template-columns: 1fr; }
       table.people th:nth-child(3), table.people td:nth-child(3) { display: none; }
@@ -180,7 +194,14 @@
 </head>
 <body>
 <main>
-  <h1>Interacción Operativa · Grupos de WhatsApp</h1>
+  <header class="brandbar">
+    <img src="logo.png" alt="BDB Logística">
+    <div class="titles">
+      <h1>Interacción Operativa</h1>
+      <div class="sub">Atención a clientes y proveedores en grupos de WhatsApp</div>
+    </div>
+    <div class="stripes" aria-hidden="true"></div>
+  </header>
 
   <section class="card">
     <div class="row">
