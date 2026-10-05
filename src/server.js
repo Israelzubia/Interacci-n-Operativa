@@ -1,9 +1,10 @@
+import { spawn } from 'node:child_process';
 import express from 'express';
 import { fileURLToPath } from 'node:url';
 import { fetchGroups, listGroups } from './groups.js';
 import { interactionReport, MAX_THRESHOLD } from './interaction.js';
-import { listPeople, setName, setRole } from './people.js';
-import { allChats, getMessages } from './store.js';
+import { flush as flushPeople, listPeople, setName, setRole } from './people.js';
+import { allChats, flush as flushMessages, getMessages } from './store.js';
 import { connect, getSocket, getState, logout, syncContacts } from './whatsapp.js';
 
 const PORT = process.env.PORT || 3000;
@@ -87,6 +88,24 @@ app.post('/api/logout', async (_req, res) => {
 
 // Solo escucha en local: la sesion de WhatsApp no debe exponerse a la red.
 app.listen(PORT, '127.0.0.1', () => {
-  console.log(`Plataforma en http://localhost:${PORT}`);
-  connect().catch((err) => console.error('Error al conectar con WhatsApp:', err));
+  console.log(new Date().toISOString(), `Plataforma en http://localhost:${PORT}`);
+  // connect() reintenta por su cuenta si falla
+  connect();
 });
+
+// Como servicio, evita que la Mac se duerma mientras la plataforma corre (caffeinate termina junto con este proceso)
+if (process.env.KEEP_AWAKE === '1' && process.platform === 'darwin') {
+  spawn('caffeinate', ['-i', '-s', '-w', String(process.pid)], { stdio: 'ignore' }).unref();
+}
+
+// Un error inesperado de la libreria de WhatsApp no debe tirar la plataforma
+process.on('unhandledRejection', (err) => console.error(new Date().toISOString(), 'Error no controlado:', err));
+
+// Al detener el servicio, guarda lo pendiente antes de salir
+for (const signal of ['SIGTERM', 'SIGINT']) {
+  process.on(signal, () => {
+    flushMessages();
+    flushPeople();
+    process.exit(0);
+  });
+}

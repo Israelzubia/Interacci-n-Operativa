@@ -439,7 +439,14 @@ async function refresh() {
 $('filter').addEventListener('input', renderGroups);
 $('refreshBtn').addEventListener('click', loadGroups);
 $('connectBtn').addEventListener('click', async () => { await post('/api/connect'); refresh(); });
-$('logoutBtn').addEventListener('click', async () => { await post('/api/logout'); refresh(); });
+$('logoutBtn').addEventListener('click', async () => {
+  const ok = confirm(
+    '¿Cerrar la sesión de WhatsApp?\n\nSe desvincula este dispositivo y la plataforma deja de recibir mensajes hasta que vuelvas a escanear el QR.',
+  );
+  if (!ok) return;
+  await post('/api/logout');
+  refresh();
+});
 
 refresh();
 setInterval(refresh, 2000);

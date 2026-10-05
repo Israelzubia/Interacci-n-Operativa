@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { pickJid, rememberName } from './people.js';
 
 const FILE = 'data/messages.json';
@@ -19,12 +19,23 @@ try {
   // primera ejecucion: sin datos previos
 }
 
+// Escribe en un archivo temporal y lo renombra, para no dejar el archivo a medias si el proceso se detiene
+function writeNow() {
+  clearTimeout(timer);
+  timer = null;
+  mkdirSync('data', { recursive: true });
+  writeFileSync(`${FILE}.tmp`, JSON.stringify(Object.fromEntries(chats)));
+  renameSync(`${FILE}.tmp`, FILE);
+}
+
 function persist() {
   clearTimeout(timer);
-  timer = setTimeout(() => {
-    mkdirSync('data', { recursive: true });
-    writeFileSync(FILE, JSON.stringify(Object.fromEntries(chats)));
-  }, 1000);
+  timer = setTimeout(writeNow, 1000);
+}
+
+// Guarda de inmediato si hay cambios pendientes (al apagar el servidor)
+export function flush() {
+  if (timer) writeNow();
 }
 
 const unwrap = (message) => message?.ephemeralMessage?.message ?? message?.viewOnceMessage?.message ?? message;

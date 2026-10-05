@@ -5,6 +5,7 @@ import makeWASocket, {
 } from '@whiskeysockets/baileys';
 import { rememberName } from './people.js';
 import { addMessage } from './store.js';
+import { existsSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
 import pino from 'pino';
 import QRCode from 'qrcode';
@@ -15,6 +16,31 @@ const logger = pino({ level: 'silent' });
 // Estado observable por la interfaz: disconnected | qr | connecting | connected
 const state = { status: 'disconnected', qr: null, user: null };
 let sock = null;
+let connecting = false;
+let retryTimer = null;
+let attempt = 0;
+
+// Reintenta la conexion con espera creciente (2 s, 4 s, 8 s... hasta 1 min) ante cualquier falla:
+// sin internet, WhatsApp caido o un error al arrancar. Nunca se da por vencido.
+function scheduleReconnect(delay = Math.min(60_000, 2000 * 2 ** attempt)) {
+  clearTimeout(retryTimer);
+  attempt += 1;
+  state.status = 'connecting';
+  retryTimer = setTimeout(connect, delay);
+}
+
+function onConnectError(err) {
+  console.error(new Date().toISOString(), 'Error al conectar con WhatsApp:', err.message);
+  connecting = false;
+  scheduleReconnect();
+}
+
+// Vigilancia: si hay sesion guardada y la conexion quedo caida, la levanta de nuevo
+setInterval(() => {
+  if (state.status === 'disconnected' && !connecting && existsSync(`${AUTH_DIR}/creds.json`)) {
+    connect();
+  }
+}, 60_000).unref();
 
 function safeAdd(msg) {
   try {
@@ -38,12 +64,26 @@ export function getSocket() {
   return sock;
 }
 
-export async function connect() {
+// Conecta (o reconecta); cualquier error programa un nuevo intento
+export function connect() {
+  return openSocket().catch(onConnectError);
+}
+
+async function openSocket() {
+  if (connecting) return;
+  connecting = true;
+  clearTimeout(retryTimer);
+  // Cierra el socket anterior para no duplicar eventos
+  if (sock) {
+    sock.ev.removeAllListeners();
+    sock.end?.(undefined);
+  }
+  state.status = 'connecting';
   const { state: auth, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
   const { version } = await fetchLatestBaileysVersion();
 
-  state.status = 'connecting';
   sock = makeWASocket({ version, auth, logger, printQRInTerminal: false, syncFullHistory: true });
+  connecting = false;
   sock.ev.on('creds.update', saveCreds);
   sock.ev.on('messages.upsert', ({ messages }) => messages.forEach(safeAdd));
   sock.ev.on('messaging-history.set', ({ messages, contacts }) => {
@@ -59,6 +99,8 @@ export async function connect() {
       state.qr = await QRCode.toDataURL(qr, { width: 320, margin: 1 });
     }
     if (connection === 'open') {
+      attempt = 0;
+      console.log(new Date().toISOString(), 'WhatsApp conectado');
       state.status = 'connected';
       state.qr = null;
       state.user = { id: sock.user?.id, name: sock.user?.name };
@@ -67,12 +109,14 @@ export async function connect() {
       const code = lastDisconnect?.error?.output?.statusCode;
       state.user = null;
       state.qr = null;
+      console.log(new Date().toISOString(), 'WhatsApp desconectado, codigo', code);
       if (code === DisconnectReason.loggedOut) {
+        // La sesion se cerro desde el telefono: hay que volver a vincular con QR
         state.status = 'disconnected';
         await rm(AUTH_DIR, { recursive: true, force: true });
       } else {
-        // Caida transitoria (incluye el reinicio que WhatsApp pide tras escanear el QR)
-        await connect();
+        // Caida transitoria; tras escanear el QR WhatsApp pide reiniciar de inmediato
+        scheduleReconnect(code === DisconnectReason.restartRequired ? 0 : undefined);
       }
     }
   });

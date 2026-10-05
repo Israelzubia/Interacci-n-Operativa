@@ -3,8 +3,12 @@
   "version": "1.0.0",
   "description": "Monitoreo de grupos de WhatsApp y priorizacion de correo para operacion de ultima milla",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "node src/server.js"
+    "start": "node src/server.js",
+    "service:install": "bash scripts/service.sh install",
+    "service:uninstall": "bash scripts/service.sh uninstall",
+    "service:restart": "bash scripts/service.sh restart",
+    "service:status": "bash scripts/service.sh status",
+    "service:logs": "bash scripts/service.sh logs"
   },
   "repository": {
     "type": "git",
