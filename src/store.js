@@ -79,6 +79,8 @@ export function addMessage(msg) {
     fromMe: !!msg.key.fromMe,
     sender,
     quotedId: ctx?.stanzaId || undefined,
+    // Personas arrobadas en el mensaje (@)
+    mentions: ctx?.mentionedJid?.length ? ctx.mentionedJid : undefined,
     text,
     ts: Number(msg.messageTimestamp?.low ?? msg.messageTimestamp) || 0,
   });

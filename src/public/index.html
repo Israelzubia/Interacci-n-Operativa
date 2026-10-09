@@ -189,6 +189,7 @@
     details.drill[open] > summary::before { content: '▾ '; }
     details.drill > .card { border: 0; border-top: 1px solid var(--line); border-radius: 0; padding: 16px 0; margin: 0; }
     .views .updated { margin-left: auto; align-self: center; color: var(--muted); font-size: .8rem; }
+    .mention-kpis { font-size: .88rem; margin: -4px 0 12px; }
     [hidden] { display: none !important; }
   </style>
 </head>
@@ -307,6 +308,13 @@
       <h2>Semáforo del equipo</h2>
       <p class="hint">Según el tiempo mediano de respuesta de cada persona en el periodo. La barra muestra cuántas de sus respuestas cayeron en cada color. Clic en una persona para ver los grupos donde respondió en rojo.</p>
       <div class="lights" id="lights"></div>
+    </section>
+
+    <section class="card viz">
+      <h2>Semáforo de menciones (@)</h2>
+      <p class="hint">Solo cuando un cliente o proveedor arroba a alguien de tu equipo en un grupo. Cuenta el tiempo hasta que esa persona escribe en el grupo. Clic en una persona para ver cada mención.</p>
+      <p class="mention-kpis" id="mentionKpis"></p>
+      <div class="lights" id="mentionLights"></div>
     </section>
 
     <section class="card viz" id="pendingCard">

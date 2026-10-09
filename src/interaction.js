@@ -75,6 +75,103 @@ const SPARK_DAYS = 14;
 // Fecha local (AAAA-MM-DD) de un instante
 const dayOf = (ts) => new Date((ts + TZ_OFFSET) * 1000).toISOString().slice(0, 10);
 
+// Arrobas en el texto del mensaje: WhatsApp escribe "@" seguido del numero o del id interno
+const MENTION = /@(\d{6,})/g;
+
+/*
+ * Menciones (@) de clientes y proveedores a personas del equipo, en grupos con clientes y proveedores.
+ * Cada mencion queda abierta hasta que la persona arrobada escribe en ese grupo; el tiempo cuenta
+ * solo dentro del horario. Usa las menciones guardadas o, en mensajes anteriores, las del texto.
+ */
+async function mentionReport({ groups, normalized, team, me, resolve, since, now, thr, nameOf }) {
+  const members = new Set(['me', ...team]);
+  // Persona del equipo arrobada; la cuenta propia se guarda como 'me'
+  const toMember = async (jid) => {
+    const pn = await resolve(jid);
+    if (pn === me) return 'me';
+    return team.has(pn) ? pn : null;
+  };
+  const cases = [];
+  for (const g of groups) {
+    const list = normalized.get(g.id);
+    if (!list || g.type === 'Interno') continue;
+    const open = new Map(); // persona -> menciones abiertas en este grupo
+    for (const m of list) {
+      const isTeam = members.has(m.sender);
+      if (isTeam) {
+        for (const c of open.get(m.sender) ?? []) c.answeredAt = m.ts;
+        open.delete(m.sender);
+        continue;
+      }
+      if (isAck(m.text)) continue;
+      const raw = m.mentions ?? [...m.text.matchAll(MENTION)].flatMap(([, d]) => [`${d}@s.whatsapp.net`, `${d}@lid`]);
+      const targets = new Set();
+      for (const jid of raw) {
+        const who = await toMember(jid);
+        if (who) targets.add(who);
+      }
+      for (const t of targets) {
+        const c = { group: g, target: t, requester: m.sender, start: m.ts, text: m.text, answeredAt: null };
+        cases.push(c);
+        if (!open.has(t)) open.set(t, []);
+        open.get(t).push(c);
+      }
+    }
+  }
+  // Cambia "@35064532451446" por "@Nombre" para que el texto se pueda leer
+  const labels = new Map();
+  const readable = async (text) => {
+    for (const [, d] of text.matchAll(MENTION)) {
+      if (labels.has(d)) continue;
+      const pn = await resolve(`${d}@lid`);
+      const jid = pn.endsWith('@lid') ? `${d}@s.whatsapp.net` : pn;
+      labels.set(d, pn === me ? nameOf('me') : nameOf(jid));
+    }
+    return text.replace(MENTION, (all, d) => (labels.get(d)?.startsWith('+') ? all : `@${labels.get(d)}`));
+  };
+  const recent = [];
+  for (const c of cases) {
+    if (c.start < since) continue;
+    recent.push({ ...c, text: await readable(c.text), wait: workSeconds(c.start, c.answeredAt ?? now) });
+  }
+  const byMember = [...group(recent, (c) => c.target)].map(([jid, list]) => {
+    const answered = list.filter((c) => c.answeredAt);
+    const waits = answered.map((c) => c.wait);
+    return {
+      jid,
+      name: nameOf(jid),
+      mentions: list.length,
+      responses: answered.length,
+      pending: list.filter((c) => !c.answeredAt && c.wait > thr).length,
+      median: median(waits),
+      avg: avg(waits),
+      fast: answered.filter((c) => c.wait < 300).length,
+      mid: answered.filter((c) => c.wait >= 300 && c.wait < 600).length,
+      slow: answered.filter((c) => c.wait >= 600).length,
+      // Todas sus menciones por grupo, primero las sin respuesta y las mas lentas
+      byGroup: [...group(list, (c) => c.group.id)]
+        .map(([, l]) => ({
+          group: l[0].group.name,
+          groupId: l[0].group.id,
+          client: l[0].group.client,
+          count: l.length,
+          pending: l.filter((c) => !c.answeredAt).length,
+          items: l
+            .sort((a, b) => !b.answeredAt - !a.answeredAt || b.wait - a.wait)
+            .map((c) => ({ requester: nameOf(c.requester), text: c.text, start: c.start, answeredAt: c.answeredAt, wait: c.wait })),
+        }))
+        .sort((a, b) => b.pending - a.pending || b.count - a.count),
+    };
+  });
+  return {
+    total: recent.length,
+    answered: recent.filter((c) => c.answeredAt).length,
+    pending: recent.filter((c) => !c.answeredAt && c.wait > thr).length,
+    median: median(recent.filter((c) => c.answeredAt).map((c) => c.wait)),
+    byMember: byMember.sort((a, b) => b.mentions - a.mentions),
+  };
+}
+
 const median = (xs) => {
   if (!xs.length) return null;
   const s = [...xs].sort((a, b) => a - b);
@@ -261,6 +358,8 @@ export async function interactionReport(sock, groups, chats, { days = 7, thresho
     .filter((p) => p.messages || p.responses)
     .sort((a, b) => b.responses - a.responses || b.messages - a.messages);
 
+  const mentions = await mentionReport({ groups, normalized, team, me, resolve, since, now, thr, nameOf });
+
   // Mensajes de la contraparte y del equipo por hora del dia
   const hours = Array.from({ length: 24 }, (_, h) => ({ hour: h, counterpart: 0, team: 0 }));
   for (const list of normalized.values()) {
@@ -325,6 +424,7 @@ export async function interactionReport(sock, groups, chats, { days = 7, thresho
     byClient: byClient.sort((a, b) => b.requests - a.requests),
     byGroup,
     byMember,
+    mentions,
     hours,
     pending,
     slowest,

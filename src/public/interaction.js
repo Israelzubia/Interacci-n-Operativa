@@ -207,7 +207,7 @@ function renderInterAttention() {
     ...(team.length
       ? team.map(({ p, score, why }) =>
           attItem(score >= 3 ? 3 : 2, p.name, [`${num(p.responses)} respuestas`, ...why], p.daily, () => {
-            const d = document.querySelector(`details.person[data-jid="${CSS.escape(p.jid)}"]`);
+            const d = document.querySelector(`details.person[data-board="answers"][data-jid="${CSS.escape(p.jid)}"]`);
             if (!d) return;
             d.open = true;
             d.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -435,20 +435,22 @@ function redList(p) {
   return box;
 }
 
-function renderInterLights() {
-  const people = report.byMember.filter((p) => p.responses);
+// Tablero de semaforo en tres columnas (verde, amarillo, rojo).
+// board: nombre del tablero; people: personas con median, fast, mid, slow;
+// light: color de cada persona; summary: texto bajo la barra; detail: desplegable de cada persona
+function lightBoard(target, board, people, { light = lightOf, summary, detail }) {
   // Conserva abiertas las personas que estaban desplegadas
-  const open = new Set([...document.querySelectorAll('details.person[open]')].map((d) => d.dataset.jid));
-  $('lights').replaceChildren(
-    ...LIGHTS.map((light) => {
-      const list = people.filter((p) => lightOf(p) === light).sort((a, b) => a.median - b.median);
+  const open = new Set([...target.querySelectorAll('details.person[open]')].map((d) => d.dataset.jid));
+  target.replaceChildren(
+    ...LIGHTS.map((l) => {
+      const list = people.filter((p) => light(p) === l).sort((a, b) => (a.median ?? Infinity) - (b.median ?? Infinity));
       const box = el('div', null, 'light');
-      box.style.setProperty('--c', `var(--${light.key})`);
+      box.style.setProperty('--c', `var(--${l.key})`);
       const h = el('h3');
       const title = el('span');
-      title.append(lamp(light), light.label);
+      title.append(lamp(l), l.label);
       h.append(title, el('span', `${list.length}`, 'muted'));
-      box.append(h, el('div', light.range, 'range'));
+      box.append(h, el('div', l.range, 'range'));
       if (!list.length) box.append(el('div', 'Nadie en este rango', 'empty'));
       for (const p of list) {
         const row = el('summary');
@@ -459,22 +461,78 @@ function renderInterLights() {
           seg.style.background = `var(--${k})`;
           split.append(seg);
         }
-        row.append(
-          el('span', p.name),
-          el('span', dur(p.median), 'med'),
-          split,
-          el('span', `${num(p.responses)} respuestas · ${pct(p.fast, p.responses)}% verde · ${pct(p.mid, p.responses)}% amarillo · ${pct(p.slow, p.responses)}% rojo`, 'sub'),
-        );
+        row.append(el('span', p.name), el('span', p.median == null ? 'sin respuesta' : dur(p.median), 'med'), split, el('span', summary(p), 'sub'));
         tip(split, () => [p.name, `${num(p.fast)} en menos de 5 min`, `${num(p.mid)} de 5 a 9 min`, `${num(p.slow)} en 10 min o más`]);
         const d = el('details', null, 'person');
         d.dataset.jid = p.jid;
+        d.dataset.board = board;
         d.open = open.has(p.jid);
-        d.append(row, redList(p));
+        d.append(row, detail(p));
         box.append(d);
       }
       return box;
     }),
   );
+}
+
+const colorMix = (p) => `${pct(p.fast, p.responses)}% verde · ${pct(p.mid, p.responses)}% amarillo · ${pct(p.slow, p.responses)}% rojo`;
+
+function renderInterLights() {
+  lightBoard($('lights'), 'answers', report.byMember.filter((p) => p.responses), {
+    summary: (p) => `${num(p.responses)} respuestas · ${colorMix(p)}`,
+    detail: redList,
+  });
+}
+
+// Abre un grupo en la vista Grupos
+function goToGroup(name, id) {
+  showView('groups');
+  applyFilter('Todos', 'Todos', name);
+  document.querySelector(`details[data-id="${CSS.escape(id)}"]`)?.setAttribute('open', '');
+}
+
+// Desplegable de menciones: cada grupo con sus arrobas, primero las que siguen sin respuesta
+function mentionList(p) {
+  const box = el('div', null, 'reds');
+  box.append(el('div', `${num(p.mentions)} ${p.mentions === 1 ? 'mención' : 'menciones'} en ${num(p.byGroup.length)} ${p.byGroup.length === 1 ? 'grupo' : 'grupos'}`, 'muted'));
+  for (const g of p.byGroup) {
+    const rg = el('div', null, 'rg');
+    const head = el('div', null, 'rg-head');
+    const name = el('span', g.group);
+    name.append(el('span', g.client, 'chip'));
+    head.append(name, el('span', g.pending ? `${g.count} · ${g.pending} sin respuesta` : `${g.count}`));
+    head.title = 'Abrir el grupo';
+    head.addEventListener('click', () => goToGroup(g.group, g.groupId));
+    rg.append(head);
+    for (const c of g.items) {
+      const row = el('div', null, 'case');
+      const color = !c.answeredAt ? 'red' : LIGHTS.find((l) => l.test(c.wait)).key;
+      row.style.borderLeftColor = `var(--${color})`;
+      const w = el('span', c.answeredAt ? dur(c.wait) : `sin respuesta · ${dur(c.wait)}`, 'w');
+      w.style.color = `var(--${color === 'yellow' ? 'text' : color})`;
+      row.append(el('span', `${fmt(c.start)} · ${c.requester}`), w, el('span', c.text, 't'));
+      row.title = `${c.answeredAt ? `Respondió ${fmt(c.answeredAt)}` : 'Sin respuesta'}\n${c.text}`;
+      rg.append(row);
+    }
+    box.append(rg);
+  }
+  return box;
+}
+
+function renderInterMentions() {
+  const m = report.mentions;
+  const thr = dur(report.threshold * 60);
+  $('mentionKpis').textContent = m.total
+    ? `${num(m.total)} menciones · respuesta mediana ${dur(m.median)} · ${num(m.answered)} respondidas · ${num(m.pending)} sin respuesta (más de ${thr})`
+    : 'No hubo menciones a tu equipo en este periodo.';
+  // Quien solo tiene menciones sin responder va en rojo
+  const light = (p) => (p.median == null ? (p.pending ? LIGHTS[2] : null) : lightOf(p));
+  lightBoard($('mentionLights'), 'mentions', m.byMember.filter((p) => p.responses || p.pending), {
+    light,
+    summary: (p) =>
+      `${num(p.mentions)} menciones · ${num(p.responses)} respondidas${p.pending ? ` · ${num(p.pending)} sin respuesta` : ''}${p.responses ? ` · ${colorMix(p)}` : ''}`,
+    detail: mentionList,
+  });
 }
 
 function renderInterTeam() {
@@ -573,6 +631,7 @@ function renderInteraction() {
   renderTrendMedian();
   renderTrendVolume();
   renderInterLights();
+  renderInterMentions();
   renderInterPending();
   renderInterClients();
   renderInterTeam();
