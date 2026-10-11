@@ -709,6 +709,92 @@ function renderInterAreas() {
   );
 }
 
+// --- Reporte de rutas cada 2 h (proveedores MELI) ---
+const hhmm = (ts) => new Date(ts * 1000).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', hour12: false });
+// Semaforo de cumplimiento: verde 90% o mas, amarillo 70-89%, rojo menos de 70%
+const complianceLight = (c) => (c == null ? null : c >= 0.9 ? 'green' : c >= 0.7 ? 'yellow' : 'red');
+const SLOT_STYLE = {
+  onTime: ['green', (s) => `✓ ${hhmm(s.sentAt)}`],
+  late: ['yellow', (s) => `tarde ${hhmm(s.sentAt)} (+${dur(s.delay)})`],
+  missed: ['red', () => 'omitido'],
+  overdue: ['red', () => 'vencido, sin reporte'],
+  upcoming: ['line', () => 'próximo'],
+};
+
+function slotChip(s) {
+  const [color, text] = SLOT_STYLE[s.status];
+  const chip = el('span', null, `slot ${s.status}`);
+  chip.style.setProperty('--c', `var(--${color})`);
+  chip.append(el('b', hhmm(s.due)), ` ${text(s)}`);
+  chip.title = s.sender ? `Envió ${s.sender}` : '';
+  return chip;
+}
+
+function renderInterReports() {
+  const r = report.reports;
+  if (!r?.groups) {
+    $('reportCard').hidden = true;
+    return;
+  }
+  $('reportCard').hidden = false;
+  const tol = dur(r.rule.tolerance);
+  $('reportHint').textContent =
+    `Monitoreo debe mandar el reporte de rutas (imagen con la palabra "avance") cada 2 h en los ${r.groups} grupos de cuenta MELI y tipo Proveedores. ` +
+    `El primer reporte vence 2 h después del primer mensaje del día en cada grupo, nunca antes de las 10:00, y el último a las 22:00. ` +
+    `A tiempo: hasta ${tol} después de la hora. Clic en un grupo para abrirlo.`;
+  const t = r.totals;
+  const evaluated = t.onTime + t.late + t.missed;
+  const startLabel = new Date(`${r.rule.startDay}T12:00:00`).toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' });
+  $('reportKpis').textContent = !r.started
+    ? `La regla se mide a partir del ${startLabel}. Ese día aquí verás el cumplimiento de cada grupo.`
+    : evaluated
+    ? `Cumplimiento ${pct(t.onTime, evaluated)}% · ${num(t.onTime)} a tiempo · ${num(t.late)} tarde${t.avgDelay ? ` (retraso promedio ${dur(t.avgDelay)})` : ''} · ${num(t.missed)} omitidos`
+    : 'Todavía no hay reportes por evaluar en este periodo.';
+  const head = el('tr');
+  for (const [label, n] of [['Grupo'], ['Cumplimiento', 1], ['A tiempo', 1], ['Tarde', 1], ['Omitidos', 1], ['Hoy']]) head.append(el('th', label, n ? 'num' : ''));
+  $('reportTable').replaceChildren(
+    head,
+    ...r.byGroup.map((g) => {
+      const tr = el('tr', null, 'click');
+      const name = el('td', null, 'wrap');
+      const link = el('span', g.name);
+      link.style.cursor = 'pointer';
+      link.addEventListener('click', () => goToGroup(g.name, g.id));
+      name.append(link);
+      if (g.today) name.append(el('div', `inicio hoy ${hhmm(g.today.start)}`, 'phone'));
+      const comp = el('td', null, 'num');
+      const c = complianceLight(g.compliance);
+      if (c) comp.append(lamp(LIGHTS.find((l) => l.key === c)));
+      comp.append(g.compliance == null ? '–' : `${Math.round(g.compliance * 100)}%`);
+      const today = el('td');
+      const slots = el('div', null, 'slots');
+      if (g.today?.slots.length) for (const s of g.today.slots) slots.append(slotChip(s));
+      else slots.append(el('span', !r.started ? 'Aún no inicia la regla' : g.today ? 'Sin reportes por vencer hoy' : 'Sin actividad hoy', 'muted'));
+      today.append(slots);
+      tr.append(name, comp, el('td', num(g.onTime), 'num'), el('td', num(g.late), 'num'), el('td', num(g.missed), g.missed ? 'num warn' : 'num'), today);
+      return tr;
+    }),
+  );
+  $('reportPeople').textContent = r.byMember.length
+    ? `Reportes enviados por Monitoreo: ${r.byMember.map((p) => `${p.name} ${num(p.reports)} (${pct(p.onTime, p.reports)}% a tiempo)`).join(' · ')}`
+    : 'Monitoreo no ha enviado reportes en este periodo.';
+  $('reportDays').replaceChildren(
+    ...r.byDay.map((d) => {
+      const evaluatedDay = d.onTime + d.late + d.missed;
+      const c = d.compliance;
+      const box = el('div', null, 'd');
+      const bar = el('div', null, 'bar');
+      const fill = el('i');
+      fill.style.height = `${Math.round((c ?? 0) * 100)}%`;
+      box.style.setProperty('--c', `var(--${complianceLight(c) ?? 'line'})`);
+      bar.append(fill);
+      box.append(bar, el('div', c == null ? '–' : `${Math.round(c * 100)}%`, 'v'), el('div', dayLabel(d.day)));
+      tip(box, () => [dayLong(d.day), `${num(d.onTime)} a tiempo · ${num(d.late)} tarde · ${num(d.missed)} omitidos`, `${num(evaluatedDay)} reportes evaluados`]);
+      return box;
+    }),
+  );
+}
+
 // --- MELI vs Multicuentas ---
 const CMP_ACCOUNTS = [['MELI', 'var(--cat1)'], ['Multicuentas', 'var(--cat2)']];
 
@@ -851,6 +937,7 @@ function renderAccountTrend(data) {
 
 function renderInteraction() {
   renderInterAreaFilter();
+  renderInterReports();
   renderInterAccounts();
   renderInterAreas();
   renderInterControls();

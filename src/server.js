@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import express from 'express';
-import { flush as flushAccounts, setAccount } from './accounts.js';
+import { flush as flushAccounts, setAccount, setType } from './accounts.js';
 import { fileURLToPath } from 'node:url';
 import { fetchGroups, listGroups } from './groups.js';
 import { interactionReport, MAX_THRESHOLD } from './interaction.js';
@@ -31,6 +31,17 @@ app.post('/api/groups/account', (req, res) => {
   try {
     const ids = req.body.ids ?? [req.body.id];
     for (const id of ids) setAccount(id, req.body.account ?? null);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// Confirma (o quita, con type null) el tipo Clientes / Proveedores / Interno de uno o varios grupos
+app.post('/api/groups/type', (req, res) => {
+  try {
+    const ids = req.body.ids ?? [req.body.id];
+    for (const id of ids) setType(id, req.body.type ?? null);
     res.json({ ok: true });
   } catch (err) {
     res.status(400).json({ error: err.message });

@@ -221,6 +221,17 @@
     .acct-cmp .slow-g { display: block; font-size: .8rem; cursor: pointer; white-space: nowrap; }
     .acct-cmp .slow-g:hover { text-decoration: underline; }
     .acct-sub { font-size: .9rem; margin: 18px 0 6px; }
+    /* Reporte de rutas cada 2 h */
+    .report-table td { vertical-align: top; }
+    .report-table .slots { display: flex; flex-wrap: wrap; gap: 4px; white-space: normal; min-width: 260px; }
+    .slot { font-size: .72rem; padding: 1px 7px; border-radius: 999px; border: 1px solid var(--c); white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .slot b { font-weight: 600; }
+    .slot.upcoming { border-style: dashed; color: var(--muted); }
+    .report-days { display: grid; grid-template-columns: repeat(auto-fill, minmax(54px, 1fr)); gap: 6px; }
+    .report-days .d { text-align: center; font-size: .75rem; color: var(--muted); }
+    .report-days .bar { height: 54px; background: var(--track); border-radius: 4px; position: relative; overflow: hidden; margin-bottom: 3px; }
+    .report-days .bar i { position: absolute; left: 0; right: 0; bottom: 0; background: var(--c); border-radius: 4px 4px 0 0; }
+    .report-days .v { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
     [hidden] { display: none !important; }
   </style>
 </head>
@@ -295,9 +306,13 @@
     <div class="tabs" id="accountTabs"></div>
     <div class="tabs" id="typeTabs"></div>
     <div class="tabs" id="clientTabs"></div>
+    <div class="bulk" id="typeBulk" hidden>
+      <span id="typeBulkText"></span>
+      <button id="typeBulkBtn">Confirmar tipos sugeridos</button>
+    </div>
     <div class="bulk" id="accountBulk" hidden>
       <span id="accountBulkText"></span>
-      <button id="accountBulkBtn">Confirmar sugerencias</button>
+      <button id="accountBulkBtn">Confirmar cuentas sugeridas</button>
     </div>
     <input id="filter" type="search" placeholder="Buscar grupo…" style="margin-top:12px">
     <h3 class="sec" id="withTitle"></h3>
@@ -325,6 +340,16 @@
         <div><h3>Grupos</h3><div id="attGroups"></div><p class="att-good" id="goodGroups"></p></div>
         <div><h3>Equipo</h3><div id="attTeam"></div><p class="att-good" id="goodTeam"></p></div>
       </div>
+    </section>
+
+    <section class="card viz" id="reportCard">
+      <h2>Reporte de rutas cada 2 h · proveedores MELI</h2>
+      <p class="hint" id="reportHint"></p>
+      <p class="mention-kpis" id="reportKpis"></p>
+      <div class="scroll"><table class="data report-table" id="reportTable"></table></div>
+      <p class="att-good" id="reportPeople"></p>
+      <h3 class="acct-sub">Cumplimiento por día</h3>
+      <div class="report-days" id="reportDays"></div>
     </section>
 
     <section class="card viz" id="acctCard">

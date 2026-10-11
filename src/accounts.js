@@ -5,8 +5,10 @@ import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 const FILE = 'data/groups.json';
 export const ACCOUNTS = ['MELI', 'Multicuentas', 'Ops BDB'];
 
-// accounts: id del grupo -> cuenta confirmada
-const saved = { accounts: {} };
+export const TYPES = ['Clientes', 'Proveedores', 'Interno'];
+
+// accounts: id del grupo -> cuenta confirmada; types: id del grupo -> tipo confirmado
+const saved = { accounts: {}, types: {} };
 let timer = null;
 
 try {
@@ -56,5 +58,21 @@ export function setAccount(id, account) {
   if (account && !ACCOUNTS.includes(account)) throw new Error(`Cuenta no válida: ${account}`);
   if (account) saved.accounts[id] = account;
   else delete saved.accounts[id];
+  persist();
+}
+
+// Tipo del grupo (Clientes, Proveedores o Interno): el confirmado o el sugerido por el nombre
+export function typeOfGroup(id, suggested) {
+  const confirmed = saved.types?.[id] ?? null;
+  return { type: confirmed ?? suggested, typeSuggested: suggested, typeConfirmed: !!confirmed };
+}
+
+// Confirma el tipo de un grupo (o quita la confirmacion con type null)
+export function setType(id, type) {
+  if (!id) throw new Error('Falta el grupo');
+  if (type && !TYPES.includes(type)) throw new Error(`Tipo no válido: ${type}`);
+  saved.types ??= {};
+  if (type) saved.types[id] = type;
+  else delete saved.types[id];
   persist();
 }

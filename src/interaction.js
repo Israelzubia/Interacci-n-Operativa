@@ -1,5 +1,6 @@
 import { isPnUser } from '@whiskeysockets/baileys';
 import { accountOf } from './accounts.js';
+import { reportRule } from './reports.js';
 import { areaFor, displayName, makeResolver, restFor, teamJids } from './people.js';
 
 // Horario de operacion: todos los dias de 4:00 a 23:59, hora del centro de Mexico (UTC-6, sin horario de verano).
@@ -456,6 +457,17 @@ export async function interactionReport(sock, groups, chats, { days = 7, thresho
 
   const mentions = await mentionReport({ groups, normalized, team, me, resolve, since, now, thr, nameOf, areaOf: areaOfMember, restOf, acctOf });
 
+  // Regla del reporte de rutas cada 2 h en los grupos de proveedores de MELI
+  const reports = reportRule({
+    groups,
+    normalized,
+    acctOf,
+    isMonitor: (jid) => (jid === 'me' || team.has(jid)) && areaOfMember(jid) === 'Monitoreo',
+    nameOf,
+    since,
+    now,
+  });
+
   // Mensajes de la contraparte y del equipo por hora del dia
   const hours = Array.from({ length: 24 }, (_, h) => ({ hour: h, counterpart: 0, team: 0 }));
   for (const list of normalized.values()) {
@@ -523,6 +535,7 @@ export async function interactionReport(sock, groups, chats, { days = 7, thresho
     byMember,
     mentions,
     byArea: byArea.sort((a, b) => b.responses - a.responses),
+    reports,
     byAccount: accountSummary({ reqs, prevReqs, trendReqs, byGroup, acctOf, thr, now }),
     hours,
     pending,

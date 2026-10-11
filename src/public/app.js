@@ -351,43 +351,53 @@ async function loadMessages(g, box) {
   box.scrollTop = box.scrollHeight;
 }
 
-async function saveAccount(list, value) {
+// Guarda la clasificacion de uno o varios grupos: kind 'account' (MELI / Multicuentas / Ops BDB)
+// o 'type' (Clientes / Proveedores / Interno); value null quita la confirmacion
+async function saveGroupClass(kind, list, value) {
   if (!list.length) return;
-  const res = await fetch('/api/groups/account', {
+  const res = await fetch(`/api/groups/${kind}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ids: list.map((g) => g.id), account: value }),
+    body: JSON.stringify({ ids: list.map((g) => g.id), [kind]: value }),
   });
-  if (!res.ok) return alert('No se pudo guardar la cuenta');
+  if (!res.ok) return alert('No se pudo guardar la clasificación');
   for (const g of list) {
-    g.account = value ?? g.accountSuggested;
-    g.accountConfirmed = !!value;
+    g[kind] = value ?? g[`${kind}Suggested`];
+    g[`${kind}Confirmed`] = !!value;
     withAccountLabel(g);
   }
+  // El tipo cambia los tiempos de respuesta (solo se miden grupos con clientes y proveedores)
+  if (kind === 'type') loadResponse();
+  renderDashboard();
   renderGroups();
 }
 
-// Selector de cuenta con boton Confirmar, dentro del encabezado del grupo
-function accountControl(g) {
+// Selector con boton Confirmar dentro del encabezado del grupo
+function classControl(g, kind, options, emptyLabel) {
   const box = el('span', null, 'acct');
   // Los clics en los controles no abren ni cierran el grupo
   box.addEventListener('click', (e) => e.preventDefault());
   const sel = document.createElement('select');
-  sel.append(new Option('Sin clasificar', ''), ...ACCOUNTS.slice(1, -1).map((a) => new Option(a, a)));
-  sel.value = g.account ?? '';
-  sel.classList.toggle('suggested', !g.accountConfirmed);
-  sel.title = g.accountConfirmed ? 'Cuenta confirmada' : 'Cuenta sugerida, sin confirmar';
-  sel.addEventListener('change', () => saveAccount([g], sel.value || null));
+  sel.append(new Option(emptyLabel, ''), ...options.map((o) => new Option(o, o)));
+  sel.value = g[kind] ?? '';
+  const confirmed = g[`${kind}Confirmed`];
+  const suggested = g[`${kind}Suggested`];
+  sel.classList.toggle('suggested', !confirmed);
+  sel.title = confirmed ? 'Confirmado' : 'Sugerido, sin confirmar';
+  sel.addEventListener('change', () => saveGroupClass(kind, [g], sel.value || null));
   box.append(sel);
-  if (g.accountConfirmed) {
+  if (confirmed) {
     box.append(el('span', '✓', 'ok'));
-  } else if (g.accountSuggested) {
+  } else if (suggested) {
     const b = el('button', 'Confirmar');
-    b.addEventListener('click', () => saveAccount([g], g.accountSuggested));
+    b.addEventListener('click', () => saveGroupClass(kind, [g], suggested));
     box.append(b);
   }
   return box;
 }
+
+const accountControl = (g) => classControl(g, 'account', ACCOUNTS.slice(1, -1), 'Sin clasificar');
+const typeControl = (g) => classControl(g, 'type', TYPES.slice(1), 'Sin tipo');
 
 function groupItem(g) {
   const d = document.createElement('details');
@@ -396,12 +406,10 @@ function groupItem(g) {
   const name = document.createElement('span');
   const meta = document.createElement('span');
   name.textContent = g.name;
-  for (const label of [g.client, g.type]) {
-    const chip = document.createElement('span');
-    chip.className = 'chip';
-    chip.textContent = label;
-    name.append(chip);
-  }
+  const chip = document.createElement('span');
+  chip.className = 'chip';
+  chip.textContent = g.client;
+  name.append(chip, typeControl(g));
   meta.className = 'meta';
   meta.textContent = g.messageCount
     ? `${num(g.messages24h)} en 24 h · último ${fmt(g.lastMessageAt)} · ${g.participants} integrantes`
@@ -456,14 +464,16 @@ function renderGroups() {
   renderTabs($('typeTabs'), TYPES, 'type', type, groups.filter((g) => byClient(g) && byAccount(g)), (t) => (type = t));
   const q = $('filter').value.trim().toLowerCase();
   const rows = groups.filter((g) => byClient(g) && byType(g) && byAccount(g) && g.name.toLowerCase().includes(q));
-  // Confirmar en bloque las cuentas sugeridas de los grupos mostrados
-  const toConfirm = rows.filter((g) => !g.accountConfirmed && g.accountSuggested);
-  const confirmed = groups.filter((g) => g.accountConfirmed).length;
-  $('accountBulk').hidden = !toConfirm.length;
-  $('accountBulkText').textContent = `Cuenta confirmada en ${num(confirmed)} de ${num(groups.length)} grupos. ${num(toConfirm.length)} de los mostrados tienen una sugerencia sin confirmar.`;
-  $('accountBulkBtn').onclick = async () => {
-    for (const [value, list] of Object.entries(Object.groupBy(toConfirm, (g) => g.accountSuggested))) await saveAccount(list, value);
-  };
+  // Confirmar en bloque el tipo y la cuenta sugeridos de los grupos mostrados
+  for (const [kind, label] of [['type', 'Tipo'], ['account', 'Cuenta']]) {
+    const toConfirm = rows.filter((g) => !g[`${kind}Confirmed`] && g[`${kind}Suggested`]);
+    const confirmed = groups.filter((g) => g[`${kind}Confirmed`]).length;
+    $(`${kind}Bulk`).hidden = !toConfirm.length;
+    $(`${kind}BulkText`).textContent = `${label} confirmado en ${num(confirmed)} de ${num(groups.length)} grupos. ${num(toConfirm.length)} de los mostrados tienen una sugerencia sin confirmar.`;
+    $(`${kind}BulkBtn`).onclick = async () => {
+      for (const [value, list] of Object.entries(Object.groupBy(toConfirm, (g) => g[`${kind}Suggested`]))) await saveGroupClass(kind, list, value);
+    };
+  }
   const withMsgs = rows.filter((g) => g.messageCount).sort((a, b) => b.lastMessageAt - a.lastMessageAt);
   const without = rows.filter((g) => !g.messageCount);
   $('groupsTitle').textContent = `Grupos (${rows.length}${rows.length !== groups.length ? ` de ${groups.length}` : ''})`;

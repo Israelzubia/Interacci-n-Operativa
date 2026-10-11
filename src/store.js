@@ -59,6 +59,16 @@ function describe(message) {
   return '[otro tipo de mensaje]';
 }
 
+// Tipo de archivo del mensaje (para saber si una imagen con texto es imagen)
+function mediaKind(message) {
+  const m = unwrap(message);
+  if (m?.imageMessage) return 'image';
+  if (m?.videoMessage) return 'video';
+  if (m?.documentMessage) return 'document';
+  if (m?.audioMessage) return 'audio';
+  return undefined;
+}
+
 // Guarda un mensaje de grupo de Baileys; ignora los que no son de grupo o no tienen contenido.
 export function addMessage(msg) {
   const jid = msg.key?.remoteJid;
@@ -82,6 +92,7 @@ export function addMessage(msg) {
     // Personas arrobadas en el mensaje (@)
     mentions: ctx?.mentionedJid?.length ? ctx.mentionedJid : undefined,
     text,
+    kind: mediaKind(msg.message),
     ts: Number(msg.messageTimestamp?.low ?? msg.messageTimestamp) || 0,
   });
   list.sort((a, b) => a.ts - b.ts);
