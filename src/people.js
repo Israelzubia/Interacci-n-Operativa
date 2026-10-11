@@ -3,10 +3,13 @@ import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 
 const FILE = 'data/people.json';
 export const ROLES = ['Equipo', 'Cliente', 'Proveedor'];
+// Areas iniciales del equipo; el usuario puede agregar mas
+const DEFAULT_AREAS = ['Monitoreo', 'Despacho', 'Team Leader'];
 
 // roles: jid -> rol confirmado por el usuario
 // names: jid -> { custom: nombre escrito a mano, contact: nombre en la agenda, push: nombre que la persona se puso }
-const saved = { roles: {}, names: {} };
+// areas: jid -> area confirmada; areaList: areas agregadas por el usuario
+const saved = { roles: {}, names: {}, areas: {}, areaList: [] };
 let timer = null;
 
 try {
@@ -58,6 +61,36 @@ export function setName(jid, name) {
   persist();
 }
 
+export const listAreas = () => [...new Set([...DEFAULT_AREAS, ...saved.areaList])];
+
+export function addArea(name) {
+  const area = String(name ?? '').trim().slice(0, 40);
+  if (!area) throw new Error('Escribe el nombre del área');
+  if (!listAreas().some((a) => a.toLowerCase() === area.toLowerCase())) {
+    saved.areaList.push(area);
+    persist();
+  }
+  return listAreas();
+}
+
+// Area confirmada (o quita la confirmacion con area null)
+export function setArea(jid, area) {
+  if (!jid) throw new Error('Falta la persona');
+  if (area && !listAreas().includes(area)) throw new Error(`Área no válida: ${area}`);
+  if (area) saved.areas[jid] = area;
+  else delete saved.areas[jid];
+  persist();
+}
+
+// Sugerencia de area a partir del nombre ("Ivi Monitor" -> Monitoreo, "Jose Luis Dispatcher" -> Despacho)
+function suggestArea(name) {
+  if (!name) return null;
+  if (/monitor/i.test(name)) return 'Monitoreo';
+  if (/dispatch|despach/i.test(name)) return 'Despacho';
+  if (/\bTL\b|team ?lead|l[ií]der/i.test(name)) return 'Team Leader';
+  return null;
+}
+
 export function setRole(jid, role) {
   if (!jid) throw new Error('Falta la persona');
   if (role && !ROLES.includes(role)) throw new Error(`Rol no valido: ${role}`);
@@ -96,6 +129,15 @@ export async function teamJids(resolve) {
 }
 
 export const displayName = (jid) => nameOf(jid);
+
+// Area de una persona del equipo: la confirmada o, si no hay, la sugerida por su nombre
+export const areaFor = (jid) => saved.areas[jid] ?? suggestArea(nameOf(jid)) ?? null;
+
+function areaOf(jid, name) {
+  const confirmed = saved.areas[jid] ?? null;
+  const suggested = suggestArea(name);
+  return { area: confirmed ?? suggested, areaSuggested: suggested, areaConfirmed: !!confirmed };
+}
 
 function nameOf(...jids) {
   for (const jid of jids) {
@@ -159,6 +201,7 @@ export async function listPeople(sock, groups, chats) {
         suggested,
         role: confirmed ?? suggested,
         confirmed: !!confirmed,
+        ...areaOf(p.jid, nameOf(p.jid, ...p.aliases) ?? p.pushFallback),
       };
     })
     .sort((a, b) => b.messages - a.messages || b.groupCount - a.groupCount);

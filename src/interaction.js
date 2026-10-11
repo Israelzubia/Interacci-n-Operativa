@@ -1,5 +1,5 @@
 import { isPnUser } from '@whiskeysockets/baileys';
-import { displayName, makeResolver, teamJids } from './people.js';
+import { areaFor, displayName, makeResolver, teamJids } from './people.js';
 
 // Horario de operacion: todos los dias de 4:00 a 23:59, hora del centro de Mexico (UTC-6, sin horario de verano).
 // El tiempo de respuesta solo cuenta los minutos dentro de este horario; la noche no cuenta.
@@ -83,7 +83,7 @@ const MENTION = /@(\d{6,})/g;
  * Cada mencion queda abierta hasta que la persona arrobada escribe en ese grupo; el tiempo cuenta
  * solo dentro del horario. Usa las menciones guardadas o, en mensajes anteriores, las del texto.
  */
-async function mentionReport({ groups, normalized, team, me, resolve, since, now, thr, nameOf }) {
+async function mentionReport({ groups, normalized, team, me, resolve, since, now, thr, nameOf, areaOf }) {
   const members = new Set(['me', ...team]);
   // Persona del equipo arrobada; la cuenta propia se guarda como 'me'
   const toMember = async (jid) => {
@@ -140,6 +140,7 @@ async function mentionReport({ groups, normalized, team, me, resolve, since, now
     return {
       jid,
       name: nameOf(jid),
+      area: areaOf(jid),
       mentions: list.length,
       responses: answered.length,
       pending: list.filter((c) => !c.answeredAt && c.wait > thr).length,
@@ -169,6 +170,16 @@ async function mentionReport({ groups, normalized, team, me, resolve, since, now
     pending: recent.filter((c) => !c.answeredAt && c.wait > thr).length,
     median: median(recent.filter((c) => c.answeredAt).map((c) => c.wait)),
     byMember: byMember.sort((a, b) => b.mentions - a.mentions),
+    byArea: [...group(recent, (c) => areaOf(c.target))].map(([area, list]) => {
+      const answered = list.filter((c) => c.answeredAt);
+      return {
+        area,
+        mentions: list.length,
+        responses: answered.length,
+        pending: list.filter((c) => !c.answeredAt && c.wait > thr).length,
+        median: median(answered.map((c) => c.wait)),
+      };
+    }),
   };
 }
 
@@ -314,7 +325,21 @@ export async function interactionReport(sock, groups, chats, { days = 7, thresho
   });
 
   // Por persona del equipo
+  const areaOfMember = (jid) => areaFor(jid === 'me' ? me : jid) ?? 'Sin área';
   const responses = reqs.filter((r) => r.answeredAt);
+  // Por area del equipo (segun quien respondio)
+  const byArea = [...group(responses, (r) => areaOfMember(r.responder))].map(([area, list]) => ({
+    area,
+    people: new Set(list.map((r) => r.responder)).size,
+    responses: list.length,
+    median: median(list.map((r) => r.wait)),
+    avg: avg(list.map((r) => r.wait)),
+    onTime: list.filter((r) => r.wait <= thr).length,
+    fast: list.filter((r) => r.wait < 300).length,
+    mid: list.filter((r) => r.wait >= 300 && r.wait < 600).length,
+    slow: list.filter((r) => r.wait >= 600).length,
+    daily: dailyMedians(trendReqs.filter((r) => r.answeredAt && areaOfMember(r.responder) === area), now),
+  }));
   const memberKeys = new Set(['me', ...team]);
   const prevMember = prevBy((r) => r.responder ?? '');
   const byMember = [...memberKeys]
@@ -325,6 +350,7 @@ export async function interactionReport(sock, groups, chats, { days = 7, thresho
       return {
         jid,
         name: nameOf(jid),
+        area: areaOfMember(jid),
         isMe: jid === 'me',
         responses: mine.length,
         explicit: mine.filter((r) => r.explicit).length,
@@ -358,7 +384,7 @@ export async function interactionReport(sock, groups, chats, { days = 7, thresho
     .filter((p) => p.messages || p.responses)
     .sort((a, b) => b.responses - a.responses || b.messages - a.messages);
 
-  const mentions = await mentionReport({ groups, normalized, team, me, resolve, since, now, thr, nameOf });
+  const mentions = await mentionReport({ groups, normalized, team, me, resolve, since, now, thr, nameOf, areaOf: areaOfMember });
 
   // Mensajes de la contraparte y del equipo por hora del dia
   const hours = Array.from({ length: 24 }, (_, h) => ({ hour: h, counterpart: 0, team: 0 }));
@@ -425,6 +451,7 @@ export async function interactionReport(sock, groups, chats, { days = 7, thresho
     byGroup,
     byMember,
     mentions,
+    byArea: byArea.sort((a, b) => b.responses - a.responses),
     hours,
     pending,
     slowest,

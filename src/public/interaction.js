@@ -3,6 +3,10 @@
 const PERIODS = [[1, '24 h'], [7, '7 días'], [30, '30 días']];
 let days = 7;
 let report = null;
+let areaSel = 'Todas';
+let areaOrder = [];
+// Filtro de area: aplica a las secciones por persona del equipo
+const inArea = (p) => areaSel === 'Todas' || p.area === areaSel;
 
 // Duracion legible a partir de segundos; trunca a minutos completos (4 min 50 s -> 4 min),
 // igual que los rangos del semaforo
@@ -49,6 +53,7 @@ async function loadInteraction() {
     return;
   }
   report = await res.json();
+  areaOrder = await (await fetch('/api/areas')).json().catch(() => []);
   if (report) renderInteraction();
 }
 
@@ -190,7 +195,7 @@ function renderInterAttention() {
 
   // Equipo: mediana en rojo, muchas respuestas en rojo o empeoro
   const team = report.byMember
-    .filter((p) => p.responses >= 5)
+    .filter((p) => p.responses >= 5 && inArea(p))
     .map((p) => {
       let score = 0;
       const why = [];
@@ -214,7 +219,7 @@ function renderInterAttention() {
           }))
       : [el('div', 'Nadie del equipo requiere atención en este periodo.', 'att-none')]),
   );
-  const goodT = report.byMember.filter((p) => p.responses >= 5 && better(p.median, p.prev.median));
+  const goodT = report.byMember.filter((p) => inArea(p) && p.responses >= 5 && better(p.median, p.prev.median));
   $('goodTeam').textContent = goodT.length
     ? `Mejoraron: ${goodT.slice(0, 4).map((p) => `${p.name} (${dur(p.prev.median)} → ${dur(p.median)})`).join(', ')}`
     : '';
@@ -461,7 +466,9 @@ function lightBoard(target, board, people, { light = lightOf, summary, detail })
           seg.style.background = `var(--${k})`;
           split.append(seg);
         }
-        row.append(el('span', p.name), el('span', p.median == null ? 'sin respuesta' : dur(p.median), 'med'), split, el('span', summary(p), 'sub'));
+        const who = el('span', p.name);
+        if (p.area && areaSel === 'Todas') who.append(el('span', p.area, 'chip area-chip'));
+        row.append(who, el('span', p.median == null ? 'sin respuesta' : dur(p.median), 'med'), split, el('span', summary(p), 'sub'));
         tip(split, () => [p.name, `${num(p.fast)} en menos de 5 min`, `${num(p.mid)} de 5 a 9 min`, `${num(p.slow)} en 10 min o más`]);
         const d = el('details', null, 'person');
         d.dataset.jid = p.jid;
@@ -478,7 +485,7 @@ function lightBoard(target, board, people, { light = lightOf, summary, detail })
 const colorMix = (p) => `${pct(p.fast, p.responses)}% verde · ${pct(p.mid, p.responses)}% amarillo · ${pct(p.slow, p.responses)}% rojo`;
 
 function renderInterLights() {
-  lightBoard($('lights'), 'answers', report.byMember.filter((p) => p.responses), {
+  lightBoard($('lights'), 'answers', report.byMember.filter((p) => p.responses && inArea(p)), {
     summary: (p) => `${num(p.responses)} respuestas · ${colorMix(p)}`,
     detail: redList,
   });
@@ -522,12 +529,14 @@ function mentionList(p) {
 function renderInterMentions() {
   const m = report.mentions;
   const thr = dur(report.threshold * 60);
-  $('mentionKpis').textContent = m.total
-    ? `${num(m.total)} menciones · respuesta mediana ${dur(m.median)} · ${num(m.answered)} respondidas · ${num(m.pending)} sin respuesta (más de ${thr})`
-    : 'No hubo menciones a tu equipo en este periodo.';
+  // Con un area elegida, el resumen es el de esa area
+  const a = areaSel === 'Todas' ? { mentions: m.total, median: m.median, responses: m.answered, pending: m.pending } : m.byArea.find((x) => x.area === areaSel);
+  $('mentionKpis').textContent = a?.mentions
+    ? `${num(a.mentions)} menciones${areaSel === 'Todas' ? '' : ` a ${areaSel}`} · respuesta mediana ${dur(a.median)} · ${num(a.responses)} respondidas · ${num(a.pending)} sin respuesta (más de ${thr})`
+    : 'No hubo menciones en este periodo.';
   // Quien solo tiene menciones sin responder va en rojo
   const light = (p) => (p.median == null ? (p.pending ? LIGHTS[2] : null) : lightOf(p));
-  lightBoard($('mentionLights'), 'mentions', m.byMember.filter((p) => p.responses || p.pending), {
+  lightBoard($('mentionLights'), 'mentions', m.byMember.filter((p) => (p.responses || p.pending) && inArea(p)), {
     light,
     summary: (p) =>
       `${num(p.mentions)} menciones · ${num(p.responses)} respondidas${p.pending ? ` · ${num(p.pending)} sin respuesta` : ''}${p.responses ? ` · ${colorMix(p)}` : ''}`,
@@ -540,7 +549,7 @@ function renderInterTeam() {
   table(
     $('teamTable'),
     [['Persona'], ['Respuestas', 1], ['Citadas', 1], ['Mediana', 1], ['Promedio', 1], [`≤ ${thr}`, 1], ['Mensajes', 1], ['Grupos', 1]],
-    report.byMember.map((p) => {
+    report.byMember.filter(inArea).map((p) => {
       const tr = el('tr');
       const who = cell(p.name);
       const light = lightOf(p);
@@ -562,7 +571,7 @@ function renderInterTeam() {
 
 // Matriz persona x cliente con el numero de solicitudes respondidas
 function renderInterWho() {
-  const members = report.byMember.filter((p) => p.responses);
+  const members = report.byMember.filter((p) => p.responses && inArea(p));
   const clients = [...new Set(members.flatMap((p) => Object.keys(p.clients)))].sort(
     (a, b) => CLIENTS.indexOf(a) - CLIENTS.indexOf(b),
   );
@@ -624,7 +633,70 @@ function renderInterSlow() {
   );
 }
 
+// Areas presentes en el reporte, en el orden de Personas y "Sin área" al final
+function reportAreas() {
+  const seen = new Set([...report.byMember.map((p) => p.area), ...report.mentions.byMember.map((p) => p.area)]);
+  return [...areaOrder.filter((a) => seen.has(a)), ...[...seen].filter((a) => a !== 'Sin área' && !areaOrder.includes(a)), ...(seen.has('Sin área') ? ['Sin área'] : [])];
+}
+
+function setArea(a) {
+  areaSel = a;
+  renderInteraction();
+}
+
+function renderInterAreaFilter() {
+  const list = reportAreas();
+  if (!list.includes(areaSel)) areaSel = 'Todas';
+  $('areaFilter').replaceChildren(
+    ...['Todas', ...list].map((a) => {
+      const b = el('button', a);
+      b.classList.toggle('active', a === areaSel);
+      b.addEventListener('click', () => setArea(a));
+      return b;
+    }),
+  );
+}
+
+function renderInterAreas() {
+  const mentions = new Map(report.mentions.byArea.map((a) => [a.area, a]));
+  const thr = dur(report.threshold * 60);
+  $('areaCards').replaceChildren(
+    ...reportAreas().map((area) => {
+      const a = report.byArea.find((x) => x.area === area) ?? { area, responses: 0, people: 0, fast: 0, mid: 0, slow: 0, daily: [] };
+      const mt = mentions.get(area);
+      const light = lightOf(a);
+      const card = el('div', null, 'area-card');
+      card.classList.toggle('sel', areaSel === area);
+      card.style.setProperty('--c', light ? `var(--${light.key})` : 'var(--line)');
+      const head = el('div', null, 'head');
+      const name = el('span');
+      if (light) name.append(lamp(light));
+      name.append(area);
+      head.append(name, a.daily.length ? spark(a.daily, 80, 22) : el('span'));
+      const split = el('div', null, 'split');
+      for (const [k, n] of [['green', a.fast], ['yellow', a.mid], ['red', a.slow]]) {
+        const seg = el('i');
+        seg.style.flex = String(n);
+        seg.style.background = `var(--${k})`;
+        split.append(seg);
+      }
+      card.append(
+        head,
+        el('div', a.responses ? dur(a.median) : '–', 'big'),
+        el('div', a.responses ? `${pct(a.onTime, a.responses)}% en ${thr} o menos · ${num(a.responses)} respuestas · ${num(a.people)} ${a.people === 1 ? "persona" : "personas"}` : 'Sin respuestas en el periodo', 'sub'),
+        split,
+        el('div', mt ? `Menciones: ${num(mt.mentions)} · mediana ${dur(mt.median)}${mt.pending ? ` · ${num(mt.pending)} sin respuesta` : ''}` : 'Sin menciones', 'sub'),
+      );
+      tip(split, () => [area, `${num(a.fast)} en menos de 5 min`, `${num(a.mid)} de 5 a 9 min`, `${num(a.slow)} en 10 min o más`]);
+      card.addEventListener('click', () => setArea(areaSel === area ? 'Todas' : area));
+      return card;
+    }),
+  );
+}
+
 function renderInteraction() {
+  renderInterAreaFilter();
+  renderInterAreas();
   renderInterControls();
   renderInterKpis();
   renderInterAttention();

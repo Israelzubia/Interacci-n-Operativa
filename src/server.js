@@ -3,7 +3,7 @@ import express from 'express';
 import { fileURLToPath } from 'node:url';
 import { fetchGroups, listGroups } from './groups.js';
 import { interactionReport, MAX_THRESHOLD } from './interaction.js';
-import { flush as flushPeople, listPeople, setName, setRole } from './people.js';
+import { addArea, flush as flushPeople, listAreas, listPeople, setArea, setName, setRole } from './people.js';
 import { allChats, flush as flushMessages, getMessages } from './store.js';
 import { connect, getSocket, getState, logout, syncContacts } from './whatsapp.js';
 
@@ -50,6 +50,28 @@ app.get('/api/interaction', async (req, res) => {
 app.post('/api/people/name', (req, res) => {
   try {
     setName(req.body.jid, req.body.name);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// Areas del equipo
+app.get('/api/areas', (_req, res) => res.json(listAreas()));
+
+app.post('/api/areas', (req, res) => {
+  try {
+    res.json(addArea(req.body.name));
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// Asigna (o quita, con area null) el area de una o varias personas del equipo
+app.post('/api/people/area', (req, res) => {
+  try {
+    const jids = req.body.jids ?? [req.body.jid];
+    for (const jid of jids) setArea(jid, req.body.area ?? null);
     res.json({ ok: true });
   } catch (err) {
     res.status(400).json({ error: err.message });

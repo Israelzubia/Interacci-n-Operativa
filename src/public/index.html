@@ -190,6 +190,16 @@
     details.drill > .card { border: 0; border-top: 1px solid var(--line); border-radius: 0; padding: 16px 0; margin: 0; }
     .views .updated { margin-left: auto; align-self: center; color: var(--muted); font-size: .8rem; }
     .mention-kpis { font-size: .88rem; margin: -4px 0 12px; }
+    /* Comparativo por area */
+    .areas-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; }
+    .area-card { border: 1px solid var(--line); border-top: 4px solid var(--c); border-radius: 8px; padding: 12px 14px; cursor: pointer; display: grid; gap: 4px; }
+    .area-card:hover { background: var(--track); }
+    .area-card.sel { outline: 2px solid var(--text); outline-offset: 1px; }
+    .area-card .head { display: flex; justify-content: space-between; align-items: center; font-weight: 600; }
+    .area-card .big { font-size: 1.6rem; font-weight: 600; line-height: 1.1; font-variant-numeric: tabular-nums; }
+    .area-card .sub { color: var(--muted); font-size: .78rem; }
+    .area-card .split { display: flex; margin: 4px 0; }
+    .area-chip { margin-left: 6px; }
     [hidden] { display: none !important; }
   </style>
 </head>
@@ -274,6 +284,7 @@
   <div id="viewInteraction" hidden>
     <div class="controls">
       <label>Periodo <span class="tabs" id="daysTabs"></span></label>
+      <label>Área <span class="tabs" id="areaFilter"></span></label>
       <label>Sin respuesta después de <select id="threshold" style="width:auto">
         <option value="5">5 min</option><option value="10" selected>10 min</option>
       </select></label>
@@ -288,6 +299,12 @@
         <div><h3>Grupos</h3><div id="attGroups"></div><p class="att-good" id="goodGroups"></p></div>
         <div><h3>Equipo</h3><div id="attTeam"></div><p class="att-good" id="goodTeam"></p></div>
       </div>
+    </section>
+
+    <section class="card viz">
+      <h2>Comparativo por área</h2>
+      <p class="hint">Tiempo mediano de respuesta de cada área del equipo, con el semáforo, y sus menciones (@). Las áreas se asignan en Personas. Clic en un área para filtrar la vista.</p>
+      <div class="areas-grid" id="areaCards"></div>
     </section>
 
     <div class="grid2">
@@ -361,6 +378,25 @@
 
   <div id="viewPeople" hidden>
     <div class="kpis" id="peopleKpis"></div>
+    <section class="card" id="areasCard">
+      <div class="row">
+        <strong id="areasTitle">Áreas del equipo</strong>
+        <button id="addArea">+ Nueva área</button>
+      </div>
+      <p class="hint muted" style="margin:6px 0 0;font-size:.85rem">
+        Personas confirmadas como Equipo. El área se sugiere según el nombre (Monitorista → Monitoreo, Dispatcher → Despacho, TL → Team Leader);
+        revísala y confírmala, o elige otra.
+      </p>
+      <div class="tabs" id="areaTabs"></div>
+      <div class="bulk" id="areaBulk" hidden>
+        <span id="areaBulkText"></span>
+        <button id="areaBulkBtn">Confirmar sugerencias</button>
+      </div>
+      <table class="people">
+        <thead><tr><th>Persona</th><th class="num">Grupos</th><th class="num">Mensajes</th><th>Área</th></tr></thead>
+        <tbody id="areaBody"></tbody>
+      </table>
+    </section>
     <section class="card">
       <div class="row">
         <strong id="peopleTitle">Personas</strong>

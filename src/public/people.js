@@ -6,6 +6,8 @@ const MAX_ROWS = 200;
 let people = [];
 let roleTab = 'Todos';
 let peopleLoaded = false;
+let areas = [];
+let areaTab = 'Todas';
 
 const roleOf = (p) => p.role ?? 'Sin clasificar';
 
@@ -14,6 +16,7 @@ async function loadPeople() {
   const res = await fetch('/api/people');
   if (!res.ok) return;
   people = await res.json();
+  areas = await (await fetch('/api/areas')).json();
   peopleLoaded = true;
   fillGroupFilter();
   renderPeople();
@@ -175,8 +178,116 @@ function personRow(p) {
   return tr;
 }
 
+// --- Areas del equipo ---
+const teamMembers = () => people.filter((p) => p.role === 'Equipo' && (p.confirmed || p.isMe));
+const areaLabel = (p) => p.area ?? 'Sin área';
+
+async function saveArea(list, area) {
+  if (!list.length) return;
+  const res = await fetch('/api/people/area', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ jids: list.map((p) => p.jid), area }),
+  });
+  if (!res.ok) return alert('No se pudo guardar el área');
+  for (const p of list) {
+    p.area = area ?? p.areaSuggested;
+    p.areaConfirmed = !!area;
+  }
+  renderAreas();
+}
+
+function areaSelect(p) {
+  const sel = document.createElement('select');
+  sel.append(new Option('Sin área', ''), ...areas.map((a) => new Option(a, a)));
+  sel.value = p.area ?? '';
+  sel.classList.toggle('suggested', !p.areaConfirmed);
+  sel.title = p.areaConfirmed ? 'Área confirmada' : 'Área sugerida, sin confirmar';
+  sel.addEventListener('change', () => saveArea([p], sel.value || null));
+  return sel;
+}
+
+function areaRow(p) {
+  const tr = document.createElement('tr');
+  const who = document.createElement('td');
+  const name = document.createElement('div');
+  name.className = 'who';
+  name.textContent = (p.name ?? 'Sin nombre') + (p.isMe ? ' (tú)' : '');
+  const phone = document.createElement('div');
+  phone.className = 'phone';
+  phone.textContent = p.phone ?? '';
+  who.append(name, phone);
+  const groupsTd = document.createElement('td');
+  groupsTd.className = 'num';
+  groupsTd.textContent = p.groupCount;
+  const msgs = document.createElement('td');
+  msgs.className = 'num';
+  msgs.textContent = num(p.messages);
+  const areaTd = document.createElement('td');
+  areaTd.append(areaSelect(p));
+  if (p.areaConfirmed) {
+    const ok = document.createElement('span');
+    ok.className = 'ok';
+    ok.textContent = '✓ confirmado';
+    areaTd.append(ok);
+  } else if (p.areaSuggested) {
+    const b = document.createElement('button');
+    b.textContent = 'Confirmar';
+    b.style.cssText = 'margin-left:6px;padding:3px 10px;font-size:.8rem';
+    b.addEventListener('click', () => saveArea([p], p.areaSuggested));
+    areaTd.append(b);
+  }
+  tr.append(who, groupsTd, msgs, areaTd);
+  return tr;
+}
+
+function renderAreas() {
+  const team = teamMembers();
+  const tabs = ['Todas', ...areas, 'Sin área'];
+  if (!tabs.includes(areaTab)) areaTab = 'Todas';
+  $('areaTabs').replaceChildren(
+    ...tabs.map((a) => {
+      const b = document.createElement('button');
+      const n = team.filter((p) => a === 'Todas' || areaLabel(p) === a).length;
+      b.textContent = `${a} (${n})`;
+      b.classList.toggle('active', a === areaTab);
+      b.addEventListener('click', () => {
+        areaTab = a;
+        renderAreas();
+      });
+      return b;
+    }),
+  );
+  const rows = team.filter((p) => areaTab === 'Todas' || areaLabel(p) === areaTab).sort((a, b) => b.messages - a.messages);
+  const confirmed = team.filter((p) => p.areaConfirmed).length;
+  $('areasTitle').textContent = `Áreas del equipo (${num(confirmed)} de ${num(team.length)} confirmadas)`;
+  $('areaBody').replaceChildren(...rows.map(areaRow));
+  // Confirmar en bloque las sugerencias de las personas mostradas
+  const pending = rows.filter((p) => !p.areaConfirmed && p.areaSuggested);
+  $('areaBulk').hidden = !pending.length;
+  $('areaBulkText').textContent = `${num(pending.length)} ${pending.length === 1 ? 'persona tiene' : 'personas tienen'} un área sugerida sin confirmar.`;
+  $('areaBulkBtn').onclick = async () => {
+    for (const [area, list] of Object.entries(Object.groupBy(pending, (p) => p.areaSuggested))) await saveArea(list, area);
+  };
+}
+
+$('addArea').addEventListener('click', async () => {
+  const name = prompt('Nombre de la nueva área:');
+  if (!name?.trim()) return;
+  const res = await fetch('/api/areas', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  });
+  const out = await res.json().catch(() => ({}));
+  if (!res.ok) return alert(out.error ?? 'No se pudo crear el área');
+  areas = out;
+  renderAreas();
+});
+
 function renderPeople() {
   renderPeopleKpis();
+  renderAreas();
   const base = baseFiltered();
   $('roleTabs').replaceChildren(
     ...ROLE_TABS.map((r) => {
