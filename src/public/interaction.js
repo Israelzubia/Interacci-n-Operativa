@@ -468,6 +468,7 @@ function lightBoard(target, board, people, { light = lightOf, summary, detail })
         }
         const who = el('span', p.name);
         if (p.area && areaSel === 'Todas') who.append(el('span', p.area, 'chip area-chip'));
+        if (p.restDays?.length) who.append(el('span', restLabel(p), 'chip area-chip'));
         row.append(who, el('span', p.median == null ? 'sin respuesta' : dur(p.median), 'med'), split, el('span', summary(p), 'sub'));
         tip(split, () => [p.name, `${num(p.fast)} en menos de 5 min`, `${num(p.mid)} de 5 a 9 min`, `${num(p.slow)} en 10 min o más`]);
         const d = el('details', null, 'person');
@@ -482,11 +483,15 @@ function lightBoard(target, board, people, { light = lightOf, summary, detail })
   );
 }
 
+const DAY_NAMES = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
+const restLabel = (p) => (p.restDays?.length ? `descansa ${p.restDays.map((d) => DAY_NAMES[d]).join(' y ')}` : '');
+
 const colorMix = (p) => `${pct(p.fast, p.responses)}% verde · ${pct(p.mid, p.responses)}% amarillo · ${pct(p.slow, p.responses)}% rojo`;
 
 function renderInterLights() {
   lightBoard($('lights'), 'answers', report.byMember.filter((p) => p.responses && inArea(p)), {
-    summary: (p) => `${num(p.responses)} respuestas · ${colorMix(p)}`,
+    summary: (p) =>
+      `${num(p.responses)} respuestas · ${colorMix(p)}${p.rest?.responses ? ` · en su descanso respondió ${num(p.rest.responses)} (mediana ${dur(p.rest.median)}, no cuentan)` : ''}`,
     detail: redList,
   });
 }
@@ -517,6 +522,12 @@ function mentionList(p) {
       row.style.borderLeftColor = `var(--${color})`;
       const w = el('span', c.answeredAt ? dur(c.wait) : `sin respuesta · ${dur(c.wait)}`, 'w');
       w.style.color = `var(--${color === 'yellow' ? 'text' : color})`;
+      if (c.rest) {
+        // Mencion en su dia de descanso: se registra pero no cuenta
+        row.classList.add('rest');
+        w.textContent = `día de descanso · ${c.answeredAt ? dur(c.wait) : 'sin respuesta'}`;
+        w.style.color = 'var(--muted)';
+      }
       row.append(el('span', `${fmt(c.start)} · ${c.requester}`), w, el('span', c.text, 't'));
       row.title = `${c.answeredAt ? `Respondió ${fmt(c.answeredAt)}` : 'Sin respuesta'}\n${c.text}`;
       rg.append(row);
@@ -532,14 +543,14 @@ function renderInterMentions() {
   // Con un area elegida, el resumen es el de esa area
   const a = areaSel === 'Todas' ? { mentions: m.total, median: m.median, responses: m.answered, pending: m.pending } : m.byArea.find((x) => x.area === areaSel);
   $('mentionKpis').textContent = a?.mentions
-    ? `${num(a.mentions)} menciones${areaSel === 'Todas' ? '' : ` a ${areaSel}`} · respuesta mediana ${dur(a.median)} · ${num(a.responses)} respondidas · ${num(a.pending)} sin respuesta (más de ${thr})`
+    ? `${num(a.mentions)} menciones${areaSel === 'Todas' ? '' : ` a ${areaSel}`} · respuesta mediana ${dur(a.median)} · ${num(a.responses)} respondidas · ${num(a.pending)} sin respuesta (más de ${thr})${areaSel === 'Todas' && m.onRest ? ` · ${num(m.onRest)} en día de descanso, no cuentan` : ''}`
     : 'No hubo menciones en este periodo.';
   // Quien solo tiene menciones sin responder va en rojo
   const light = (p) => (p.median == null ? (p.pending ? LIGHTS[2] : null) : lightOf(p));
-  lightBoard($('mentionLights'), 'mentions', m.byMember.filter((p) => (p.responses || p.pending) && inArea(p)), {
+  lightBoard($('mentionLights'), 'mentions', m.byMember.filter((p) => (p.responses || p.pending || p.rest?.mentions) && inArea(p)), {
     light,
     summary: (p) =>
-      `${num(p.mentions)} menciones · ${num(p.responses)} respondidas${p.pending ? ` · ${num(p.pending)} sin respuesta` : ''}${p.responses ? ` · ${colorMix(p)}` : ''}`,
+      `${num(p.mentions)} menciones · ${num(p.responses)} respondidas${p.pending ? ` · ${num(p.pending)} sin respuesta` : ''}${p.responses ? ` · ${colorMix(p)}` : ''}${p.rest?.mentions ? ` · ${num(p.rest.mentions)} en su descanso (no cuentan)` : ''}`,
     detail: mentionList,
   });
 }

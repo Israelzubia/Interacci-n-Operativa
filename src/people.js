@@ -9,7 +9,8 @@ const DEFAULT_AREAS = ['Monitoreo', 'Despacho', 'Team Leader'];
 // roles: jid -> rol confirmado por el usuario
 // names: jid -> { custom: nombre escrito a mano, contact: nombre en la agenda, push: nombre que la persona se puso }
 // areas: jid -> area confirmada; areaList: areas agregadas por el usuario
-const saved = { roles: {}, names: {}, areas: {}, areaList: [] };
+// rest: jid -> dias de descanso (0 = domingo ... 6 = sabado)
+const saved = { roles: {}, names: {}, areas: {}, areaList: [], rest: {} };
 let timer = null;
 
 try {
@@ -58,6 +59,18 @@ export function setName(jid, name) {
   const custom = String(name ?? '').trim().slice(0, 80);
   const { custom: _old, ...rest } = saved.names[jid] ?? {};
   saved.names[jid] = custom ? { ...rest, custom } : rest;
+  persist();
+}
+
+// Dias de descanso de una persona del equipo
+export const restFor = (jid) => saved.rest?.[jid] ?? [];
+
+export function setRest(jid, days) {
+  if (!jid) throw new Error('Falta la persona');
+  const clean = [...new Set((days ?? []).map(Number))].filter((d) => d >= 0 && d <= 6).sort();
+  saved.rest ??= {};
+  if (clean.length) saved.rest[jid] = clean;
+  else delete saved.rest[jid];
   persist();
 }
 
@@ -202,6 +215,7 @@ export async function listPeople(sock, groups, chats) {
         role: confirmed ?? suggested,
         confirmed: !!confirmed,
         ...areaOf(p.jid, nameOf(p.jid, ...p.aliases) ?? p.pushFallback),
+        rest: restFor(p.jid),
       };
     })
     .sort((a, b) => b.messages - a.messages || b.groupCount - a.groupCount);

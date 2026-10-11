@@ -3,7 +3,7 @@ import express from 'express';
 import { fileURLToPath } from 'node:url';
 import { fetchGroups, listGroups } from './groups.js';
 import { interactionReport, MAX_THRESHOLD } from './interaction.js';
-import { addArea, flush as flushPeople, listAreas, listPeople, setArea, setName, setRole } from './people.js';
+import { addArea, flush as flushPeople, listAreas, listPeople, setArea, setName, setRest, setRole } from './people.js';
 import { allChats, flush as flushMessages, getMessages } from './store.js';
 import { connect, getSocket, getState, logout, syncContacts } from './whatsapp.js';
 
@@ -62,6 +62,16 @@ app.get('/api/areas', (_req, res) => res.json(listAreas()));
 app.post('/api/areas', (req, res) => {
   try {
     res.json(addArea(req.body.name));
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// Dias de descanso de una persona del equipo: { jid, days: [0-6] }
+app.post('/api/people/rest', (req, res) => {
+  try {
+    setRest(req.body.jid, req.body.days);
+    res.json({ ok: true });
   } catch (err) {
     res.status(400).json({ error: err.message });
   }

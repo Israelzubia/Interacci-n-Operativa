@@ -200,6 +200,10 @@
     .area-card .sub { color: var(--muted); font-size: .78rem; }
     .area-card .split { display: flex; margin: 4px 0; }
     .area-chip { margin-left: 6px; }
+    .restdays { display: inline-flex; gap: 2px; }
+    .restdays button { padding: 2px 0; width: 24px; font-size: .75rem; border-radius: 4px; color: var(--muted); }
+    .restdays button.on { background: var(--text); border-color: var(--text); color: var(--card); }
+    .case.rest { border-left-color: var(--muted) !important; opacity: .75; }
     [hidden] { display: none !important; }
   </style>
 </head>
@@ -329,7 +333,7 @@
 
     <section class="card viz">
       <h2>Semáforo de menciones (@)</h2>
-      <p class="hint">Solo cuando un cliente o proveedor arroba a alguien de tu equipo en un grupo. Cuenta el tiempo hasta que esa persona escribe en el grupo. Clic en una persona para ver cada mención.</p>
+      <p class="hint">Solo cuando un cliente o proveedor arroba a alguien de tu equipo en un grupo. Cuenta el tiempo hasta que esa persona escribe en el grupo. Clic en una persona para ver cada mención. Las menciones en su día de descanso se muestran aparte y no cuentan en su semáforo.</p>
       <p class="mention-kpis" id="mentionKpis"></p>
       <div class="lights" id="mentionLights"></div>
     </section>
@@ -385,7 +389,8 @@
       </div>
       <p class="hint muted" style="margin:6px 0 0;font-size:.85rem">
         Personas confirmadas como Equipo. El área se sugiere según el nombre (Monitorista → Monitoreo, Dispatcher → Despacho, TL → Team Leader);
-        revísala y confírmala, o elige otra.
+        revísala y confírmala, o elige otra. En "Descanso" marca los días que descansa cada persona: lo que pase esos días se mide
+        pero no afecta su semáforo.
       </p>
       <div class="tabs" id="areaTabs"></div>
       <div class="bulk" id="areaBulk" hidden>
@@ -393,7 +398,7 @@
         <button id="areaBulkBtn">Confirmar sugerencias</button>
       </div>
       <table class="people">
-        <thead><tr><th>Persona</th><th class="num">Grupos</th><th class="num">Mensajes</th><th>Área</th></tr></thead>
+        <thead><tr><th>Persona</th><th class="num">Grupos</th><th class="num">Mensajes</th><th>Área</th><th>Descanso</th></tr></thead>
         <tbody id="areaBody"></tbody>
       </table>
     </section>

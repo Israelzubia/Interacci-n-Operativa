@@ -1,5 +1,5 @@
 import { isPnUser } from '@whiskeysockets/baileys';
-import { areaFor, displayName, makeResolver, teamJids } from './people.js';
+import { areaFor, displayName, makeResolver, restFor, teamJids } from './people.js';
 
 // Horario de operacion: todos los dias de 4:00 a 23:59, hora del centro de Mexico (UTC-6, sin horario de verano).
 // El tiempo de respuesta solo cuenta los minutos dentro de este horario; la noche no cuenta.
@@ -8,11 +8,16 @@ const WORK_START = 4 * 3600;
 const WORK_END = 24 * 3600;
 export const WORK_HOURS = 'Todos los días, 4:00 a 23:59';
 
-// Segundos dentro del horario entre dos instantes (en segundos unix)
-function workSeconds(from, to) {
+// Dia de la semana local de un instante (0 = domingo ... 6 = sabado); 1970-01-01 fue jueves
+const weekdayOf = (ts) => (Math.floor((ts + TZ_OFFSET) / 86400) + 4) % 7;
+
+// Segundos dentro del horario entre dos instantes (en segundos unix); `skip` son dias de la semana
+// que no cuentan (los de descanso de la persona)
+function workSeconds(from, to, skip = []) {
   let total = 0;
   const last = Math.floor((to + TZ_OFFSET) / 86400);
   for (let day = Math.floor((from + TZ_OFFSET) / 86400); day <= last; day++) {
+    if (skip.length && skip.includes((day + 4) % 7)) continue;
     const start = day * 86400 - TZ_OFFSET;
     const a = Math.max(from, start + WORK_START);
     const b = Math.min(to, start + WORK_END);
@@ -83,7 +88,7 @@ const MENTION = /@(\d{6,})/g;
  * Cada mencion queda abierta hasta que la persona arrobada escribe en ese grupo; el tiempo cuenta
  * solo dentro del horario. Usa las menciones guardadas o, en mensajes anteriores, las del texto.
  */
-async function mentionReport({ groups, normalized, team, me, resolve, since, now, thr, nameOf, areaOf }) {
+async function mentionReport({ groups, normalized, team, me, resolve, since, now, thr, nameOf, areaOf, restOf }) {
   const members = new Set(['me', ...team]);
   // Persona del equipo arrobada; la cuenta propia se guarda como 'me'
   const toMember = async (jid) => {
@@ -132,9 +137,19 @@ async function mentionReport({ groups, normalized, team, me, resolve, since, now
   const recent = [];
   for (const c of cases) {
     if (c.start < since) continue;
-    recent.push({ ...c, text: await readable(c.text), wait: workSeconds(c.start, c.answeredAt ?? now) });
+    // En su dia de descanso la mencion se registra pero no cuenta en su semaforo; esos dias tampoco suman espera
+    const days = restOf(c.target);
+    recent.push({
+      ...c,
+      text: await readable(c.text),
+      wait: workSeconds(c.start, c.answeredAt ?? now, days),
+      onRest: days.includes(weekdayOf(c.start)),
+    });
   }
-  const byMember = [...group(recent, (c) => c.target)].map(([jid, list]) => {
+  const counted = recent.filter((c) => !c.onRest);
+  const byMember = [...group(recent, (c) => c.target)].map(([jid, all]) => {
+    const list = all.filter((c) => !c.onRest);
+    const rest = all.filter((c) => c.onRest);
     const answered = list.filter((c) => c.answeredAt);
     const waits = answered.map((c) => c.wait);
     return {
@@ -149,28 +164,35 @@ async function mentionReport({ groups, normalized, team, me, resolve, since, now
       fast: answered.filter((c) => c.wait < 300).length,
       mid: answered.filter((c) => c.wait >= 300 && c.wait < 600).length,
       slow: answered.filter((c) => c.wait >= 600).length,
-      // Todas sus menciones por grupo, primero las sin respuesta y las mas lentas
-      byGroup: [...group(list, (c) => c.group.id)]
+      restDays: restOf(jid),
+      rest: {
+        mentions: rest.length,
+        responses: rest.filter((c) => c.answeredAt).length,
+        median: median(rest.filter((c) => c.answeredAt).map((c) => c.wait)),
+      },
+      // Todas sus menciones por grupo (las de descanso marcadas), primero las sin respuesta y las mas lentas
+      byGroup: [...group(all, (c) => c.group.id)]
         .map(([, l]) => ({
           group: l[0].group.name,
           groupId: l[0].group.id,
           client: l[0].group.client,
           count: l.length,
-          pending: l.filter((c) => !c.answeredAt).length,
+          pending: l.filter((c) => !c.answeredAt && !c.onRest).length,
           items: l
-            .sort((a, b) => !b.answeredAt - !a.answeredAt || b.wait - a.wait)
-            .map((c) => ({ requester: nameOf(c.requester), text: c.text, start: c.start, answeredAt: c.answeredAt, wait: c.wait })),
+            .sort((a, b) => a.onRest - b.onRest || !b.answeredAt - !a.answeredAt || b.wait - a.wait)
+            .map((c) => ({ requester: nameOf(c.requester), text: c.text, start: c.start, answeredAt: c.answeredAt, wait: c.wait, rest: c.onRest })),
         }))
         .sort((a, b) => b.pending - a.pending || b.count - a.count),
     };
   });
   return {
-    total: recent.length,
-    answered: recent.filter((c) => c.answeredAt).length,
-    pending: recent.filter((c) => !c.answeredAt && c.wait > thr).length,
-    median: median(recent.filter((c) => c.answeredAt).map((c) => c.wait)),
+    total: counted.length,
+    answered: counted.filter((c) => c.answeredAt).length,
+    pending: counted.filter((c) => !c.answeredAt && c.wait > thr).length,
+    median: median(counted.filter((c) => c.answeredAt).map((c) => c.wait)),
+    onRest: recent.length - counted.length,
     byMember: byMember.sort((a, b) => b.mentions - a.mentions),
-    byArea: [...group(recent, (c) => areaOf(c.target))].map(([area, list]) => {
+    byArea: [...group(counted, (c) => areaOf(c.target))].map(([area, list]) => {
       const answered = list.filter((c) => c.answeredAt);
       return {
         area,
@@ -327,8 +349,19 @@ export async function interactionReport(sock, groups, chats, { days = 7, thresho
   // Por persona del equipo
   const areaOfMember = (jid) => areaFor(jid === 'me' ? me : jid) ?? 'Sin área';
   const responses = reqs.filter((r) => r.answeredAt);
+  // Dias de descanso: la espera de cada persona no cuenta esos dias, y lo que respondio
+  // en su descanso se registra aparte sin afectar su semaforo
+  const restOf = (jid) => restFor(jid === 'me' ? me : jid);
+  const personal = (r) => {
+    const days = restOf(r.responder);
+    if (!days.length) return { ...r, onRest: false };
+    return { ...r, wait: workSeconds(r.start, r.answeredAt, days), onRest: days.includes(weekdayOf(r.start)) };
+  };
+  const personalAll = responses.map(personal);
+  const metric = personalAll.filter((r) => !r.onRest);
+  const trendMetric = trendReqs.filter((r) => r.answeredAt).map(personal).filter((r) => !r.onRest);
   // Por area del equipo (segun quien respondio)
-  const byArea = [...group(responses, (r) => areaOfMember(r.responder))].map(([area, list]) => ({
+  const byArea = [...group(metric, (r) => areaOfMember(r.responder))].map(([area, list]) => ({
     area,
     people: new Set(list.map((r) => r.responder)).size,
     responses: list.length,
@@ -338,13 +371,14 @@ export async function interactionReport(sock, groups, chats, { days = 7, thresho
     fast: list.filter((r) => r.wait < 300).length,
     mid: list.filter((r) => r.wait >= 300 && r.wait < 600).length,
     slow: list.filter((r) => r.wait >= 600).length,
-    daily: dailyMedians(trendReqs.filter((r) => r.answeredAt && areaOfMember(r.responder) === area), now),
+    daily: dailyMedians(trendMetric.filter((r) => areaOfMember(r.responder) === area), now),
   }));
   const memberKeys = new Set(['me', ...team]);
   const prevMember = prevBy((r) => r.responder ?? '');
   const byMember = [...memberKeys]
     .map((jid) => {
-      const mine = responses.filter((r) => r.responder === jid);
+      const mine = metric.filter((r) => r.responder === jid);
+      const onRest = personalAll.filter((r) => r.responder === jid && r.onRest);
       const msgs = recentTeam.filter(({ m }) => m.sender === jid);
       const waits = mine.map((r) => r.wait);
       return {
@@ -375,7 +409,9 @@ export async function interactionReport(sock, groups, chats, { days = 7, thresho
           }))
           .sort((a, b) => b.count - a.count || b.max - a.max),
         prev: summarizeAnswered(prevMember.get(jid) ?? []),
-        daily: dailyMedians(trendReqs.filter((r) => r.answeredAt && r.responder === jid), now),
+        daily: dailyMedians(trendMetric.filter((r) => r.responder === jid), now),
+        restDays: restOf(jid),
+        rest: { responses: onRest.length, median: median(onRest.map((r) => r.wait)) },
         messages: msgs.length,
         groups: new Set(msgs.map(({ g }) => g.id)).size,
         clients: Object.fromEntries([...group(mine, (r) => r.group.client)].map(([c, l]) => [c, l.length])),
@@ -384,7 +420,7 @@ export async function interactionReport(sock, groups, chats, { days = 7, thresho
     .filter((p) => p.messages || p.responses)
     .sort((a, b) => b.responses - a.responses || b.messages - a.messages);
 
-  const mentions = await mentionReport({ groups, normalized, team, me, resolve, since, now, thr, nameOf, areaOf: areaOfMember });
+  const mentions = await mentionReport({ groups, normalized, team, me, resolve, since, now, thr, nameOf, areaOf: areaOfMember, restOf });
 
   // Mensajes de la contraparte y del equipo por hora del dia
   const hours = Array.from({ length: 24 }, (_, h) => ({ hour: h, counterpart: 0, team: 0 }));

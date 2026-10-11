@@ -237,8 +237,37 @@ function areaRow(p) {
     b.addEventListener('click', () => saveArea([p], p.areaSuggested));
     areaTd.append(b);
   }
-  tr.append(who, groupsTd, msgs, areaTd);
+  const restTd = document.createElement('td');
+  restTd.append(restPicker(p));
+  tr.append(who, groupsTd, msgs, areaTd, restTd);
   return tr;
+}
+
+// Dias de descanso: lunes a domingo (0 = domingo)
+const WEEK = [[1, 'L', 'lunes'], [2, 'M', 'martes'], [3, 'M', 'miércoles'], [4, 'J', 'jueves'], [5, 'V', 'viernes'], [6, 'S', 'sábado'], [0, 'D', 'domingo']];
+
+function restPicker(p) {
+  const box = document.createElement('span');
+  box.className = 'restdays';
+  for (const [d, short, long] of WEEK) {
+    const b = document.createElement('button');
+    b.textContent = short;
+    b.title = long;
+    b.classList.toggle('on', p.rest.includes(d));
+    b.addEventListener('click', async () => {
+      const days = p.rest.includes(d) ? p.rest.filter((x) => x !== d) : [...p.rest, d];
+      const res = await fetch('/api/people/rest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jid: p.jid, days }),
+      });
+      if (!res.ok) return alert('No se pudo guardar el descanso');
+      p.rest = days;
+      b.classList.toggle('on', days.includes(d));
+    });
+    box.append(b);
+  }
+  return box;
 }
 
 function renderAreas() {
