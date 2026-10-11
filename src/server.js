@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import express from 'express';
+import { flush as flushAccounts, setAccount } from './accounts.js';
 import { fileURLToPath } from 'node:url';
 import { fetchGroups, listGroups } from './groups.js';
 import { interactionReport, MAX_THRESHOLD } from './interaction.js';
@@ -20,6 +21,17 @@ app.get('/api/groups', async (_req, res) => {
     res.json(await listGroups());
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// Confirma (o quita, con account null) la cuenta MELI / Multicuentas de uno o varios grupos
+app.post('/api/groups/account', (req, res) => {
+  try {
+    const ids = req.body.ids ?? [req.body.id];
+    for (const id of ids) setAccount(id, req.body.account ?? null);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
   }
 });
 
@@ -138,6 +150,7 @@ for (const signal of ['SIGTERM', 'SIGINT']) {
   process.on(signal, () => {
     flushMessages();
     flushPeople();
+    flushAccounts();
     process.exit(0);
   });
 }

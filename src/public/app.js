@@ -12,6 +12,10 @@ const TYPES = ['Todos', 'Clientes', 'Proveedores', 'Interno'];
 let groups = [];
 let client = 'Todos';
 let type = 'Todos';
+// Cuenta del grupo: MELI o Multicuentas, sugerida por el cliente y confirmada a mano
+const ACCOUNTS = ['Todas', 'MELI', 'Multicuentas', 'Sin clasificar'];
+let account = 'Todas';
+const withAccountLabel = (g) => Object.assign(g, { accountLabel: g.account ?? 'Sin clasificar' });
 let loadedFor = null;
 // Tiempos de respuesta por grupo (de /api/interaction); usa dur, lamp, lightOf y el de interaction.js
 let resp = new Map();
@@ -22,7 +26,7 @@ const post = (url) => fetch(url, { method: 'POST' });
 async function loadGroups() {
   const res = await fetch('/api/groups');
   if (!res.ok) return false;
-  groups = await res.json();
+  groups = (await res.json()).map(withAccountLabel);
   renderDashboard();
   renderGroups();
   loadResponse();
@@ -41,7 +45,11 @@ async function loadResponse() {
 function visibleGroups() {
   const q = $('filter').value.trim().toLowerCase();
   return groups.filter(
-    (g) => (client === 'Todos' || g.client === client) && (type === 'Todos' || g.type === type) && g.name.toLowerCase().includes(q),
+    (g) =>
+      (client === 'Todos' || g.client === client) &&
+      (type === 'Todos' || g.type === type) &&
+      (account === 'Todas' || g.accountLabel === account) &&
+      g.name.toLowerCase().includes(q),
   );
 }
 
@@ -168,6 +176,7 @@ function tip(el, lines) {
 function applyFilter(c, t, q = '') {
   client = c;
   type = t;
+  account = 'Todas';
   $('filter').value = q;
   renderDashboard();
   renderGroups();
@@ -341,6 +350,44 @@ async function loadMessages(g, box) {
   box.scrollTop = box.scrollHeight;
 }
 
+async function saveAccount(list, value) {
+  if (!list.length) return;
+  const res = await fetch('/api/groups/account', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ids: list.map((g) => g.id), account: value }),
+  });
+  if (!res.ok) return alert('No se pudo guardar la cuenta');
+  for (const g of list) {
+    g.account = value ?? g.accountSuggested;
+    g.accountConfirmed = !!value;
+    withAccountLabel(g);
+  }
+  renderGroups();
+}
+
+// Selector de cuenta con boton Confirmar, dentro del encabezado del grupo
+function accountControl(g) {
+  const box = el('span', null, 'acct');
+  // Los clics en los controles no abren ni cierran el grupo
+  box.addEventListener('click', (e) => e.preventDefault());
+  const sel = document.createElement('select');
+  sel.append(new Option('Sin clasificar', ''), new Option('MELI', 'MELI'), new Option('Multicuentas', 'Multicuentas'));
+  sel.value = g.account ?? '';
+  sel.classList.toggle('suggested', !g.accountConfirmed);
+  sel.title = g.accountConfirmed ? 'Cuenta confirmada' : 'Cuenta sugerida, sin confirmar';
+  sel.addEventListener('change', () => saveAccount([g], sel.value || null));
+  box.append(sel);
+  if (g.accountConfirmed) {
+    box.append(el('span', '✓', 'ok'));
+  } else if (g.accountSuggested) {
+    const b = el('button', 'Confirmar');
+    b.addEventListener('click', () => saveAccount([g], g.accountSuggested));
+    box.append(b);
+  }
+  return box;
+}
+
 function groupItem(g) {
   const d = document.createElement('details');
   d.dataset.id = g.id;
@@ -366,6 +413,7 @@ function groupItem(g) {
     rt.title = 'Tiempo mediano de respuesta del equipo';
     name.append(rt);
   }
+  name.append(accountControl(g));
   head.append(name, meta);
   d.append(head);
   if (g.type !== 'Interno') d.append(groupResponse(g));
@@ -383,7 +431,7 @@ function renderTabs(el, options, field, current, others, onPick) {
   el.replaceChildren(
     ...options.map((o) => {
       const b = document.createElement('button');
-      const n = others.filter((g) => o === 'Todos' || g[field] === o).length;
+      const n = others.filter((g) => o === 'Todos' || o === 'Todas' || g[field] === o).length;
       b.textContent = `${o} (${n})`;
       b.classList.toggle('active', o === current);
       b.addEventListener('click', () => {
@@ -401,10 +449,20 @@ function renderGroups() {
   const open = new Set([...document.querySelectorAll('#withList details[open], #withoutList details[open]')].map((d) => d.dataset.id));
   const byClient = (g) => client === 'Todos' || g.client === client;
   const byType = (g) => type === 'Todos' || g.type === type;
-  renderTabs($('clientTabs'), CLIENTS, 'client', client, groups.filter(byType), (c) => (client = c));
-  renderTabs($('typeTabs'), TYPES, 'type', type, groups.filter(byClient), (t) => (type = t));
+  const byAccount = (g) => account === 'Todas' || g.accountLabel === account;
+  renderTabs($('accountTabs'), ACCOUNTS, 'accountLabel', account, groups.filter((g) => byClient(g) && byType(g)), (a) => (account = a));
+  renderTabs($('clientTabs'), CLIENTS, 'client', client, groups.filter((g) => byType(g) && byAccount(g)), (c) => (client = c));
+  renderTabs($('typeTabs'), TYPES, 'type', type, groups.filter((g) => byClient(g) && byAccount(g)), (t) => (type = t));
   const q = $('filter').value.trim().toLowerCase();
-  const rows = groups.filter((g) => byClient(g) && byType(g) && g.name.toLowerCase().includes(q));
+  const rows = groups.filter((g) => byClient(g) && byType(g) && byAccount(g) && g.name.toLowerCase().includes(q));
+  // Confirmar en bloque las cuentas sugeridas de los grupos mostrados
+  const toConfirm = rows.filter((g) => !g.accountConfirmed && g.accountSuggested);
+  const confirmed = groups.filter((g) => g.accountConfirmed).length;
+  $('accountBulk').hidden = !toConfirm.length;
+  $('accountBulkText').textContent = `Cuenta confirmada en ${num(confirmed)} de ${num(groups.length)} grupos. ${num(toConfirm.length)} de los mostrados tienen una sugerencia sin confirmar.`;
+  $('accountBulkBtn').onclick = async () => {
+    for (const [value, list] of Object.entries(Object.groupBy(toConfirm, (g) => g.accountSuggested))) await saveAccount(list, value);
+  };
   const withMsgs = rows.filter((g) => g.messageCount).sort((a, b) => b.lastMessageAt - a.lastMessageAt);
   const without = rows.filter((g) => !g.messageCount);
   $('groupsTitle').textContent = `Grupos (${rows.length}${rows.length !== groups.length ? ` de ${groups.length}` : ''})`;

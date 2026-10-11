@@ -204,6 +204,11 @@
     .restdays button { padding: 2px 0; width: 24px; font-size: .75rem; border-radius: 4px; color: var(--muted); }
     .restdays button.on { background: var(--text); border-color: var(--text); color: var(--card); }
     .case.rest { border-left-color: var(--muted) !important; opacity: .75; }
+    .acct { display: inline-flex; align-items: center; gap: 4px; margin-left: 6px; }
+    .acct select { width: auto; padding: 1px 6px; font-size: .75rem; border-radius: 999px; }
+    .acct select.suggested { border-style: dashed; color: var(--muted); }
+    .acct button { padding: 1px 8px; font-size: .72rem; border-radius: 999px; }
+    .acct .ok { margin-left: 0; font-size: .72rem; }
     [hidden] { display: none !important; }
   </style>
 </head>
@@ -275,8 +280,13 @@
       <strong id="groupsTitle">Grupos</strong>
       <button id="refreshBtn">Actualizar</button>
     </div>
+    <div class="tabs" id="accountTabs"></div>
     <div class="tabs" id="typeTabs"></div>
     <div class="tabs" id="clientTabs"></div>
+    <div class="bulk" id="accountBulk" hidden>
+      <span id="accountBulkText"></span>
+      <button id="accountBulkBtn">Confirmar sugerencias</button>
+    </div>
     <input id="filter" type="search" placeholder="Buscar grupo…" style="margin-top:12px">
     <h3 class="sec" id="withTitle"></h3>
     <div id="withList"></div>
