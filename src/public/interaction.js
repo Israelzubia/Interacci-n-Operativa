@@ -4,6 +4,9 @@ const PERIODS = [[1, '24 h'], [7, '7 días'], [30, '30 días']];
 let days = 7;
 let report = null;
 let areaSel = 'Todas';
+// Filtro de cuenta (MELI / Multicuentas) para la atencion de grupos y los pendientes
+let acctSel = 'Todas';
+const inAcct = (g) => acctSel === 'Todas' || g.account === acctSel;
 let areaOrder = [];
 // Filtro de area: aplica a las secciones por persona del equipo
 const inArea = (p) => areaSel === 'Todas' || p.area === areaSel;
@@ -166,6 +169,7 @@ function renderInterAttention() {
   const better = (cur, prev) => cmp && improved(cur, prev);
   // Grupos: pendientes ahora, mediana en rojo, muchas respuestas en rojo o empeoro
   const groups = report.byGroup
+    .filter(inAcct)
     .map((g) => {
       let score = 0;
       const why = [];
@@ -341,7 +345,7 @@ function renderTrendVolume() {
 }
 
 function renderInterPending() {
-  const list = report.pending;
+  const list = report.pending.filter(inAcct);
   $('pendingTitle').textContent = `Sin respuesta (${list.length})`;
   if (!list.length) {
     $('pendingList').replaceChildren(el('p', 'No hay mensajes pendientes en este periodo.', 'muted'));
@@ -705,8 +709,149 @@ function renderInterAreas() {
   );
 }
 
+// --- MELI vs Multicuentas ---
+const CMP_ACCOUNTS = [['MELI', 'var(--cat1)'], ['Multicuentas', 'var(--cat2)']];
+
+function renderInterAccounts() {
+  const data = CMP_ACCOUNTS.map(([name, color]) => ({ name, color, a: report.byAccount.find((x) => x.account === name), m: report.mentions.byAccount?.[name] }));
+  if (!data.some((d) => d.a)) {
+    $('acctCard').hidden = true;
+    return;
+  }
+  $('acctCard').hidden = false;
+  const thr = dur(report.threshold * 60);
+  const head = el('tr');
+  head.append(el('th'));
+  for (const d of data) {
+    const th = el('th', d.name, 'acct-h');
+    th.style.setProperty('--c', d.color);
+    th.classList.toggle('sel', acctSel === d.name);
+    th.title = 'Filtrar la atención y los pendientes por esta cuenta';
+    th.addEventListener('click', () => {
+      acctSel = acctSel === d.name ? 'Todas' : d.name;
+      renderInteraction();
+    });
+    head.append(th);
+  }
+  // Fila de comparacion; better: 'low' o 'high' marca el mejor valor con ✓
+  const mins = (secs) => (secs == null ? null : Math.floor(secs / 60));
+  const row = (label, value, show, better) => {
+    const tr = el('tr');
+    tr.append(el('td', label));
+    const vals = data.map((d) => (d.a ? value(d) : null));
+    const ok = vals.filter((v) => v != null);
+    const best = better && ok.length === 2 && ok[0] !== ok[1] ? (better === 'low' ? Math.min(...ok) : Math.max(...ok)) : null;
+    data.forEach((d, i) => {
+      const td = el('td');
+      const content = d.a ? show(d) : '–';
+      if (content instanceof Node) td.append(content);
+      else td.textContent = content;
+      if (best != null && vals[i] === best) td.classList.add('best');
+      tr.append(td);
+    });
+    return tr;
+  };
+  const medianCell = (d) => {
+    const span = el('span');
+    const light = lightOf(d.a);
+    if (light) span.append(lamp(light));
+    span.append(dur(d.a.median));
+    return span;
+  };
+  const mix = (d) => {
+    const split = el('span', null, 'split');
+    for (const [k, n] of [['green', d.a.fast], ['yellow', d.a.mid], ['red', d.a.slow]]) {
+      const seg = el('i');
+      seg.style.flex = String(n);
+      seg.style.background = `var(--${k})`;
+      seg.style.height = '8px';
+      split.append(seg);
+    }
+    tip(split, () => [d.name, `${num(d.a.fast)} en menos de 5 min`, `${num(d.a.mid)} de 5 a 9 min`, `${num(d.a.slow)} en 10 min o más`]);
+    return split;
+  };
+  const slowest = (d) => {
+    const box = el('span');
+    if (!d.a.slowest.length) box.textContent = '–';
+    for (const g of d.a.slowest) {
+      const s = el('span', `${g.name} · ${dur(g.median)}`, 'slow-g');
+      s.addEventListener('click', () => goToGroup(g.name, g.id));
+      box.append(s);
+    }
+    return box;
+  };
+  const rows = [
+    row('Grupos con solicitudes', (d) => d.a.groups, (d) => num(d.a.groups)),
+    row('Solicitudes', (d) => d.a.requests, (d) => num(d.a.requests)),
+    row('Respuesta mediana', (d) => mins(d.a.median), medianCell, 'low'),
+    row('Promedio', (d) => mins(d.a.avg), (d) => dur(d.a.avg), 'low'),
+    row(`Respondidas en ${thr} o menos`, (d) => pct(d.a.onTime, d.a.answered), (d) => `${pct(d.a.onTime, d.a.answered)}%`, 'high'),
+    row('Sin respuesta ahora', (d) => d.a.pending, (d) => num(d.a.pending), 'low'),
+    row('Respuestas por color', () => 0, mix),
+    row('Menciones (@): mediana', (d) => mins(d.m?.median ?? null), (d) => (d.m ? `${dur(d.m.median)} · ${num(d.m.mentions)} menciones` : '–'), 'low'),
+    row('Menciones sin respuesta', (d) => d.m?.pending ?? 0, (d) => num(d.m?.pending ?? 0), 'low'),
+  ];
+  if (report.prevComplete) {
+    rows.push(row('Mediana vs periodo anterior', (d) => (d.a.prev.median == null ? null : mins(d.a.median) - mins(d.a.prev.median)), (d) =>
+      {
+        if (d.a.prev.median == null) return '–';
+        const dm = mins(d.a.median) - mins(d.a.prev.median);
+        return dm === 0 ? 'igual' : `${dm < 0 ? '▼' : '▲'} ${Math.abs(dm)} min`;
+      }, 'low'));
+  }
+  rows.push(row('Grupos más lentos', () => 0, slowest));
+  $('acctCmp').replaceChildren(head, ...rows);
+  renderAccountTrend(data);
+}
+
+// Lineas de mediana diaria por cuenta, en el mismo eje
+function renderAccountTrend(data) {
+  const series = report.trend;
+  const lines = data
+    .filter((d) => d.a)
+    .map((d) => {
+      const byDay = new Map(d.a.trend.map((t) => [t.day, t]));
+      return { ...d, vals: series.map((s) => byDay.get(s.day)?.median ?? null), byDay };
+    });
+  const all = lines.flatMap((l) => l.vals).filter((v) => v != null).map((v) => v / 60);
+  // Eje hasta 60 min como maximo: un dia atipico no aplasta la grafica (el valor real va en el tooltip)
+  const peak = Math.max(0, ...all);
+  const top = Math.min(60, Math.max(15, Math.ceil(peak / 5) * 5));
+  const f = frame(series, 220, top, [0, 5, 10, ...(top > 10 ? [top] : [])], (t) => (t === top && peak > top ? `${t}+ min` : `${t} min`));
+  for (const [from, to, c] of [[0, 5, 'green'], [5, 10, 'yellow'], [10, top, 'red']]) {
+    f.svg.insertBefore(svgEl('rect', { x: f.L, width: f.W - f.L - f.R, y: f.y(to), height: f.y(from) - f.y(to), fill: `var(--${c})`, opacity: 0.06 }), f.svg.firstChild);
+  }
+  for (const l of lines) {
+    let d = '';
+    l.vals.forEach((v, i) => {
+      if (v == null) return;
+      d += `${d && l.vals[i - 1] != null ? 'L' : 'M'}${f.x(i).toFixed(1)},${f.y(v / 60).toFixed(1)}`;
+    });
+    f.svg.append(svgEl('path', { d, fill: 'none', stroke: l.color, 'stroke-width': 2, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' }));
+    l.vals.forEach((v, i) => {
+      if (v != null) f.svg.append(svgEl('circle', { cx: f.x(i), cy: f.y(v / 60), r: 4, fill: l.color, stroke: 'var(--card)', 'stroke-width': 2 }));
+    });
+  }
+  hitAreas(f, series, (s) => [
+    dayLong(s.day),
+    ...lines.map((l) => {
+      const t = l.byDay.get(s.day);
+      return t ? `${l.name}: ${dur(t.median)} · ${num(t.requests)} solicitudes` : `${l.name}: sin datos`;
+    }),
+  ]);
+  $('acctTrend').replaceChildren(f.svg);
+  $('acctLegend').replaceChildren(
+    ...lines.map((l) => {
+      const sp = el('span', l.name);
+      sp.style.setProperty('--c', l.color);
+      return sp;
+    }),
+  );
+}
+
 function renderInteraction() {
   renderInterAreaFilter();
+  renderInterAccounts();
   renderInterAreas();
   renderInterControls();
   renderInterKpis();

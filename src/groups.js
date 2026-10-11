@@ -26,7 +26,7 @@ export async function listGroups() {
       name: g.name,
       client: g.client,
       type: g.type,
-      ...accountOf(g.id, g.client, g.name),
+      ...accountOf(g.id, g.client, g.name, g.type),
       participants: g.participants.length,
       ...getStats(g.id),
       createdAt: g.creation ? new Date(g.creation * 1000).toISOString() : null,

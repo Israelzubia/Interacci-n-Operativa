@@ -6,9 +6,9 @@
   <title>Interacción Operativa · BDB Logística</title>
   <style>
     /* Paleta BDB Logística: rojo #D41900, negro y blanco. Verde, amarillo y rojo de estado quedan para el semáforo. */
-    :root { --brand: #d41900; --bg: #f4f4f4; --card: #fff; --text: #111; --muted: #666; --line: #e3e3e3; --accent: #d41900; --danger: #b42318; --seq: #262626; --on-seq: #fff; --alt: #d41900; --track: #ededed; --green: #1f9d55; --yellow: #e0b000; --red: #d92d20; }
+    :root { --brand: #d41900; --bg: #f4f4f4; --card: #fff; --text: #111; --muted: #666; --line: #e3e3e3; --accent: #d41900; --danger: #b42318; --seq: #262626; --on-seq: #fff; --alt: #d41900; --track: #ededed; --green: #1f9d55; --yellow: #e0b000; --red: #d92d20; --cat1: #262626; --cat2: #2a78d6; }
     @media (prefers-color-scheme: dark) {
-      :root { --brand: #d41900; --bg: #111; --card: #1b1b1b; --text: #f0f0f0; --muted: #a3a3a3; --line: #2e2e2e; --accent: #d41900; --danger: #ff6b57; --seq: #d6d6d6; --on-seq: #111; --alt: #ff5a3c; --track: #2a2a2a; --green: #3ccb7f; --yellow: #f5c518; --red: #ff6b57; }
+      :root { --brand: #d41900; --bg: #111; --card: #1b1b1b; --text: #f0f0f0; --muted: #a3a3a3; --line: #2e2e2e; --accent: #d41900; --danger: #ff6b57; --seq: #d6d6d6; --on-seq: #111; --alt: #ff5a3c; --track: #2a2a2a; --green: #3ccb7f; --yellow: #f5c518; --red: #ff6b57; --cat1: #e0e0e0; --cat2: #5b9bf0; }
     }
     * { box-sizing: border-box; }
     body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 system-ui, sans-serif; }
@@ -209,6 +209,18 @@
     .acct select.suggested { border-style: dashed; color: var(--muted); }
     .acct button { padding: 1px 8px; font-size: .72rem; border-radius: 999px; }
     .acct .ok { margin-left: 0; font-size: .72rem; }
+    /* MELI vs Multicuentas */
+    .acct-cmp th.acct-h { cursor: pointer; font-size: .95rem; color: var(--text); font-weight: 600; text-align: right; }
+    .acct-cmp th.acct-h::before { content: ''; display: inline-block; width: 10px; height: 10px; border-radius: 2px; background: var(--c); margin-right: 6px; }
+    .acct-cmp th.acct-h.sel { text-decoration: underline; text-underline-offset: 4px; }
+    .acct-cmp td { text-align: right; font-variant-numeric: tabular-nums; }
+    .acct-cmp td:first-child { text-align: left; color: var(--muted); }
+    .acct-cmp td.best { font-weight: 700; }
+    .acct-cmp td.best::after { content: ' ✓'; color: var(--green); font-weight: 600; }
+    .acct-cmp .split { display: inline-flex; width: 110px; vertical-align: middle; }
+    .acct-cmp .slow-g { display: block; font-size: .8rem; cursor: pointer; white-space: nowrap; }
+    .acct-cmp .slow-g:hover { text-decoration: underline; }
+    .acct-sub { font-size: .9rem; margin: 18px 0 6px; }
     [hidden] { display: none !important; }
   </style>
 </head>
@@ -313,6 +325,15 @@
         <div><h3>Grupos</h3><div id="attGroups"></div><p class="att-good" id="goodGroups"></p></div>
         <div><h3>Equipo</h3><div id="attTeam"></div><p class="att-good" id="goodTeam"></p></div>
       </div>
+    </section>
+
+    <section class="card viz" id="acctCard">
+      <h2>MELI vs Multicuentas</h2>
+      <p class="hint">Atención en los grupos con clientes y proveedores de cada cuenta (las cuentas se asignan en Grupos). Clic en el nombre de una cuenta para filtrar "Requiere tu atención" y "Sin respuesta".</p>
+      <div class="scroll"><table class="data acct-cmp" id="acctCmp"></table></div>
+      <h3 class="acct-sub">Tiempo mediano de respuesta por día</h3>
+      <div class="legend" id="acctLegend"></div>
+      <div class="chart" id="acctTrend"></div>
     </section>
 
     <section class="card viz">

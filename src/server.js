@@ -14,7 +14,9 @@ const app = express();
 app.use(express.json());
 app.use(express.static(fileURLToPath(new URL('./public', import.meta.url))));
 
-app.get('/api/status', (_req, res) => res.json(getState()));
+// Version del servidor: cambia en cada arranque para que la pagina abierta se recargue con el codigo nuevo
+const VERSION = String(Date.now());
+app.get('/api/status', (_req, res) => res.json({ ...getState(), version: VERSION }));
 
 app.get('/api/groups', async (_req, res) => {
   try {

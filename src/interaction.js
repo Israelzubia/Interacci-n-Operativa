@@ -1,4 +1,5 @@
 import { isPnUser } from '@whiskeysockets/baileys';
+import { accountOf } from './accounts.js';
 import { areaFor, displayName, makeResolver, restFor, teamJids } from './people.js';
 
 // Horario de operacion: todos los dias de 4:00 a 23:59, hora del centro de Mexico (UTC-6, sin horario de verano).
@@ -88,7 +89,7 @@ const MENTION = /@(\d{6,})/g;
  * Cada mencion queda abierta hasta que la persona arrobada escribe en ese grupo; el tiempo cuenta
  * solo dentro del horario. Usa las menciones guardadas o, en mensajes anteriores, las del texto.
  */
-async function mentionReport({ groups, normalized, team, me, resolve, since, now, thr, nameOf, areaOf, restOf }) {
+async function mentionReport({ groups, normalized, team, me, resolve, since, now, thr, nameOf, areaOf, restOf, acctOf }) {
   const members = new Set(['me', ...team]);
   // Persona del equipo arrobada; la cuenta propia se guarda como 'me'
   const toMember = async (jid) => {
@@ -192,6 +193,12 @@ async function mentionReport({ groups, normalized, team, me, resolve, since, now
     median: median(counted.filter((c) => c.answeredAt).map((c) => c.wait)),
     onRest: recent.length - counted.length,
     byMember: byMember.sort((a, b) => b.mentions - a.mentions),
+    byAccount: Object.fromEntries(
+      [...group(counted, (c) => acctOf(c.group))].map(([account, list]) => {
+        const answered = list.filter((c) => c.answeredAt);
+        return [account, { mentions: list.length, pending: list.filter((c) => !c.answeredAt && c.wait > thr).length, median: median(answered.map((c) => c.wait)) }];
+      }),
+    ),
     byArea: [...group(counted, (c) => areaOf(c.target))].map(([area, list]) => {
       const answered = list.filter((c) => c.answeredAt);
       return {
@@ -242,6 +249,30 @@ function dailyMedians(list, now) {
 }
 
 // Serie diaria: solicitudes, respuestas por color del semaforo, sin respuesta y mediana
+// Comparativo por cuenta: indicadores, mezcla del semaforo, tendencia diaria y grupos mas lentos
+function accountSummary({ reqs, prevReqs, trendReqs, byGroup, acctOf, thr, now }) {
+  const accounts = [...new Set(reqs.map((r) => acctOf(r.group)))];
+  return accounts.map((account) => {
+    const list = reqs.filter((r) => acctOf(r.group) === account);
+    const answered = list.filter((r) => r.answeredAt);
+    return {
+      account,
+      groups: new Set(list.map((r) => r.group.id)).size,
+      ...summarize(list, thr),
+      fast: answered.filter((r) => r.wait < 300).length,
+      mid: answered.filter((r) => r.wait >= 300 && r.wait < 600).length,
+      slow: answered.filter((r) => r.wait >= 600).length,
+      prev: summarize(prevReqs.filter((r) => acctOf(r.group) === account), thr),
+      trend: dailyTrend(trendReqs.filter((r) => acctOf(r.group) === account), thr, now),
+      slowest: byGroup
+        .filter((g) => g.account === account && g.answered >= 5)
+        .sort((a, b) => b.median - a.median)
+        .slice(0, 3)
+        .map((g) => ({ id: g.id, name: g.name, median: g.median, answered: g.answered })),
+    };
+  });
+}
+
 function dailyTrend(list, thr, now) {
   const byDay = group(list, (r) => dayOf(r.start));
   const first = list.length ? dayOf(Math.min(...list.map((r) => r.start))) : dayOf(now);
@@ -305,6 +336,8 @@ export async function interactionReport(sock, groups, chats, { days = 7, thresho
   const thr = threshold * 60;
   const { requests, teamMsgs } = detect(groups, normalized, team);
   const withWait = (r) => ({ ...r, wait: workSeconds(r.start, r.answeredAt ?? now) });
+  // Cuenta del grupo (MELI, Multicuentas u Ops BDB), confirmada o sugerida
+  const acctOf = (g) => accountOf(g.id, g.client, g.name, g.type).account ?? 'Sin clasificar';
   const reqs = requests.filter((r) => r.start >= since).map(withWait);
   // Periodo anterior de la misma duracion, para comparar tendencias
   const prevReqs = requests.filter((r) => r.start >= since - days * 86400 && r.start < since).map(withWait);
@@ -331,6 +364,7 @@ export async function interactionReport(sock, groups, chats, { days = 7, thresho
     const answered = list.filter((r) => r.answeredAt);
     return {
       id,
+      account: acctOf(list[0].group),
       name: list[0].group.name,
       client: list[0].group.client,
       type: list[0].group.type,
@@ -420,7 +454,7 @@ export async function interactionReport(sock, groups, chats, { days = 7, thresho
     .filter((p) => p.messages || p.responses)
     .sort((a, b) => b.responses - a.responses || b.messages - a.messages);
 
-  const mentions = await mentionReport({ groups, normalized, team, me, resolve, since, now, thr, nameOf, areaOf: areaOfMember, restOf });
+  const mentions = await mentionReport({ groups, normalized, team, me, resolve, since, now, thr, nameOf, areaOf: areaOfMember, restOf, acctOf });
 
   // Mensajes de la contraparte y del equipo por hora del dia
   const hours = Array.from({ length: 24 }, (_, h) => ({ hour: h, counterpart: 0, team: 0 }));
@@ -439,6 +473,7 @@ export async function interactionReport(sock, groups, chats, { days = 7, thresho
     .slice(0, 100)
     .map((r) => ({
       groupId: r.group.id,
+      account: acctOf(r.group),
       group: r.group.name,
       client: r.group.client,
       kind: counterpart(r),
@@ -488,6 +523,7 @@ export async function interactionReport(sock, groups, chats, { days = 7, thresho
     byMember,
     mentions,
     byArea: byArea.sort((a, b) => b.responses - a.responses),
+    byAccount: accountSummary({ reqs, prevReqs, trendReqs, byGroup, acctOf, thr, now }),
     hours,
     pending,
     slowest,

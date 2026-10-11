@@ -12,11 +12,12 @@ const TYPES = ['Todos', 'Clientes', 'Proveedores', 'Interno'];
 let groups = [];
 let client = 'Todos';
 let type = 'Todos';
-// Cuenta del grupo: MELI o Multicuentas, sugerida por el cliente y confirmada a mano
-const ACCOUNTS = ['Todas', 'MELI', 'Multicuentas', 'Sin clasificar'];
+// Cuenta del grupo: MELI, Multicuentas u Ops BDB, sugerida por el cliente y confirmada a mano
+const ACCOUNTS = ['Todas', 'MELI', 'Multicuentas', 'Ops BDB', 'Sin clasificar'];
 let account = 'Todas';
 const withAccountLabel = (g) => Object.assign(g, { accountLabel: g.account ?? 'Sin clasificar' });
 let loadedFor = null;
+let serverVersion = null;
 // Tiempos de respuesta por grupo (de /api/interaction); usa dur, lamp, lightOf y el de interaction.js
 let resp = new Map();
 let respDays = 7;
@@ -372,7 +373,7 @@ function accountControl(g) {
   // Los clics en los controles no abren ni cierran el grupo
   box.addEventListener('click', (e) => e.preventDefault());
   const sel = document.createElement('select');
-  sel.append(new Option('Sin clasificar', ''), new Option('MELI', 'MELI'), new Option('Multicuentas', 'Multicuentas'));
+  sel.append(new Option('Sin clasificar', ''), ...ACCOUNTS.slice(1, -1).map((a) => new Option(a, a)));
   sel.value = g.account ?? '';
   sel.classList.toggle('suggested', !g.accountConfirmed);
   sel.title = g.accountConfirmed ? 'Cuenta confirmada' : 'Cuenta sugerida, sin confirmar';
@@ -476,6 +477,9 @@ function renderGroups() {
 
 async function refresh() {
   const s = await (await fetch('/api/status')).json();
+  // Si el servidor se reinicio con codigo nuevo, recarga la pagina para usarlo
+  if (serverVersion && s.version && s.version !== serverVersion) return location.reload();
+  serverVersion ??= s.version;
   $('statusText').textContent = s.user ? `${LABELS[s.status]} · ${s.user.name || s.user.id}` : LABELS[s.status];
   $('dot').classList.toggle('on', s.status === 'connected');
   $('qrBox').hidden = s.status !== 'qr';

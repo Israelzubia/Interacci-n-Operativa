@@ -1,9 +1,9 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 
-// Cuenta a la que pertenece cada grupo: MELI o Multicuentas (el resto de los clientes).
+// Cuenta a la que pertenece cada grupo: MELI, Multicuentas (el resto de los clientes) u Ops BDB (operacion interna).
 // Se sugiere por el cliente del grupo y el usuario la confirma.
 const FILE = 'data/groups.json';
-export const ACCOUNTS = ['MELI', 'Multicuentas'];
+export const ACCOUNTS = ['MELI', 'Multicuentas', 'Ops BDB'];
 
 // accounts: id del grupo -> cuenta confirmada
 const saved = { accounts: {} };
@@ -34,18 +34,19 @@ export function flush() {
   if (timer) writeNow();
 }
 
-// Por nombre ("multicuentas", "MELI"); si no, MELI si el cliente es MELI y Multicuentas si es otro
-// cliente conocido; sin sugerencia en "Otros"
-function suggestAccount(client, name = '') {
+// Por nombre ("multicuentas", "MELI"); si no, MELI si el cliente es MELI, Multicuentas si es otro
+// cliente conocido y Ops BDB si es un grupo interno sin cliente; el resto queda sin sugerencia
+function suggestAccount(client, name = '', type = '') {
   if (/multi ?cuenta/i.test(name)) return 'Multicuentas';
   if (client === 'MELI' || /\bmeli\b/i.test(name)) return 'MELI';
   if (client && client !== 'Otros') return 'Multicuentas';
+  if (type === 'Interno') return 'Ops BDB';
   return null;
 }
 
-export function accountOf(id, client, name) {
+export function accountOf(id, client, name, type) {
   const confirmed = saved.accounts[id] ?? null;
-  const suggested = suggestAccount(client, name);
+  const suggested = suggestAccount(client, name, type);
   return { account: confirmed ?? suggested, accountSuggested: suggested, accountConfirmed: !!confirmed };
 }
 
