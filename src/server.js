@@ -144,7 +144,13 @@ app.post('/api/logout', async (_req, res) => {
 });
 
 // Solo escucha en local: la sesion de WhatsApp no debe exponerse a la red.
-app.listen(PORT, '127.0.0.1', () => {
+app.listen(PORT, '127.0.0.1', (err) => {
+  // Si el puerto ya esta en uso hay otra copia corriendo: no conectar a WhatsApp, porque dos
+  // conexiones con la misma sesion se desplazan entre si (codigo 440)
+  if (err) {
+    console.error(new Date().toISOString(), `No se pudo usar el puerto ${PORT} (${err.code}); ¿ya hay otra copia corriendo?`);
+    process.exit(1);
+  }
   console.log(new Date().toISOString(), `Plataforma en http://localhost:${PORT}`);
   // connect() reintenta por su cuenta si falla
   connect();
