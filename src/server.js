@@ -59,11 +59,12 @@ app.get('/api/people', async (_req, res) => {
   }
 });
 
-// Metricas de interaccion del equipo: ?days=7&threshold=10 (minutos, maximo 10)
+// Metricas de interaccion del equipo: ?days=7 (o actual)&threshold=10 (minutos, maximo 10)
 app.get('/api/interaction', async (req, res) => {
   try {
     if (getState().status !== 'connected') return res.json(null);
-    const days = Math.min(30, Math.max(1, Number(req.query.days) || 7));
+    // days=actual: la jornada en curso (hoy desde las 4:00 hasta ahora)
+    const days = req.query.days === 'actual' ? 'actual' : Math.min(30, Math.max(1, Number(req.query.days) || 7));
     const threshold = Math.min(MAX_THRESHOLD, Math.max(1, Number(req.query.threshold) || MAX_THRESHOLD));
     res.json(await interactionReport(getSocket(), await fetchGroups(), allChats(), { days, threshold }));
   } catch (err) {

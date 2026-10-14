@@ -328,7 +328,14 @@ function group(list, key) {
   return map;
 }
 
-// Metricas de interaccion del equipo para los ultimos `days` dias; `threshold` en minutos
+// Inicio de la jornada en curso: hoy a las 4:00 (antes de las 4:00 sigue la jornada de ayer)
+function currentShiftStart(now) {
+  const day = Math.floor((now + TZ_OFFSET - WORK_START) / 86400);
+  return day * 86400 - TZ_OFFSET + WORK_START;
+}
+
+// Metricas de interaccion del equipo para los ultimos `days` dias, o para la jornada en curso
+// (days = 'actual': hoy desde las 4:00 hasta ahora); `threshold` en minutos
 export async function interactionReport(sock, groups, chats, { days = 7, threshold = MAX_THRESHOLD } = {}) {
   const resolve = makeResolver(sock);
   const me = await resolve(sock.user?.id);
@@ -353,7 +360,11 @@ export async function interactionReport(sock, groups, chats, { days = 7, thresho
   let dataSince = null;
   for (const list of normalized.values()) if (list.length && (dataSince == null || list[0].ts < dataSince)) dataSince = list[0].ts;
   const now = Date.now() / 1000;
-  const since = now - days * 86400;
+  const current = days === 'actual';
+  const since = current ? currentShiftStart(now) : now - days * 86400;
+  // Periodo anterior para comparar: en "actual", la misma franja de ayer (4:00 a la hora de ahora)
+  const prevFrom = current ? since - 86400 : since - days * 86400;
+  const prevTo = current ? now - 86400 : since;
   const thr = threshold * 60;
   const { requests, teamMsgs } = detect(groups, normalized, team);
   const withWait = (r) => ({ ...r, wait: workSeconds(r.start, r.answeredAt ?? now) });
@@ -361,7 +372,7 @@ export async function interactionReport(sock, groups, chats, { days = 7, thresho
   const acctOf = (g) => accountOf(g.id, g.client, g.name, g.type).account ?? 'Sin clasificar';
   const reqs = requests.filter((r) => r.start >= since).map(withWait);
   // Periodo anterior de la misma duracion, para comparar tendencias
-  const prevReqs = requests.filter((r) => r.start >= since - days * 86400 && r.start < since).map(withWait);
+  const prevReqs = requests.filter((r) => r.start >= prevFrom && r.start < prevTo).map(withWait);
   const prevBy = (key) => group(prevReqs, key);
   // Serie diaria de los ultimos dias (para graficas de tendencia)
   const trendReqs = requests.filter((r) => r.start >= now - TREND_DAYS * 86400).map(withWait);
@@ -538,7 +549,8 @@ export async function interactionReport(sock, groups, chats, { days = 7, thresho
     workHours: WORK_HOURS,
     dataSince,
     // El periodo anterior solo se compara si hay datos con remitente de todo ese periodo
-    prevComplete: dataSince != null && since - days * 86400 >= dataSince,
+    prevComplete: dataSince != null && prevFrom >= dataSince,
+    since,
     teamSize: memberKeys.size,
     totals: {
       ...summarize(reqs, thr),

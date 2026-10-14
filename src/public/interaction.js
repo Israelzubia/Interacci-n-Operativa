@@ -1,6 +1,8 @@
 // Vista de interaccion: tiempos de respuesta del equipo con clientes y proveedores.
 // Usa $, num, kpi, tip, fmt, applyFilter (app.js) y showView (people.js).
-const PERIODS = [[1, '24 h'], [7, '7 días'], [30, '30 días']];
+// 'actual': la jornada en curso, hoy desde las 4:00 hasta ahora
+const PERIODS = [['actual', 'Actual'], [1, '24 h'], [7, '7 días'], [30, '30 días']];
+const prevLabel = () => (days === 'actual' ? 'ayer a esta hora' : 'periodo anterior');
 let days = 7;
 let report = null;
 let areaSel = 'Todas';
@@ -73,7 +75,10 @@ function renderInterControls() {
     }),
   );
   const since = report.dataSince ? new Date(report.dataSince * 1000).toLocaleDateString('es-MX', { day: 'numeric', month: 'short' }) : '–';
-  $('interNote').textContent = `Horario: ${report.workHours} · datos con remitente desde el ${since} · ${report.teamSize} personas en el equipo`;
+  const current = days === 'actual'
+    ? `Jornada actual: desde las ${hhmm(report.since)} hasta las ${hhmm(Date.now() / 1000)} · `
+    : '';
+  $('interNote').textContent = `${current}Horario: ${report.workHours} · datos con remitente desde el ${since} · ${report.teamSize} personas en el equipo`;
 }
 
 // Tarjeta de indicador con comparacion contra el periodo anterior.
@@ -82,12 +87,12 @@ function kpiDelta(label, value, sub, cur, prev, better, fmtDiff) {
   const card = kpi(label, value, sub);
   const line = el('div', null, 'delta');
   if (prev == null || cur == null) {
-    line.textContent = 'Sin datos completos del periodo anterior para comparar';
+    line.textContent = `Sin datos completos de ${prevLabel()} para comparar`;
   } else {
     const diff = cur - prev;
     const arrow = diff > 0 ? '▲' : diff < 0 ? '▼' : '=';
     if (better && diff) line.classList.add((diff < 0) === (better === 'down') ? 'good' : 'bad');
-    line.append(el('b', arrow), diff ? `${fmtDiff(Math.abs(diff))} vs periodo anterior` : 'Igual que el periodo anterior');
+    line.append(el('b', arrow), diff ? `${fmtDiff(Math.abs(diff))} vs ${prevLabel()}` : `Igual que ${prevLabel()}`);
   }
   card.append(line);
   return card;
@@ -759,7 +764,7 @@ function renderInterReports() {
   const summary = !r.started
     ? `La regla se mide a partir del ${startLabel}. Ese día aquí verás el cumplimiento de cada grupo.`
     : evaluated
-    ? `${sel ? `${dayLong(sel)}: ` : 'Periodo: '}cumplimiento ${pct(t.onTime, evaluated)}% · ${num(t.onTime)} a tiempo · ${num(t.late)} tarde${t.avgDelay ? ` (retraso promedio ${dur(t.avgDelay)})` : ''} · ${num(t.missed)} omitidos`
+    ? `${sel ? `${dayLong(sel)}: ` : (days === 'actual' ? 'Hoy hasta ahora: ' : 'Periodo: ')}cumplimiento ${pct(t.onTime, evaluated)}% · ${num(t.onTime)} a tiempo · ${num(t.late)} tarde${t.avgDelay ? ` (retraso promedio ${dur(t.avgDelay)})` : ''} · ${num(t.missed)} omitidos`
     : sel ? `${dayLong(sel)}: sin reportes por evaluar.` : 'Todavía no hay reportes por evaluar en este periodo.';
   $('reportKpis').replaceChildren(summary);
   if (sel) {
@@ -913,7 +918,7 @@ function renderInterAccounts() {
     row('Menciones sin respuesta', (d) => d.m?.pending ?? 0, (d) => num(d.m?.pending ?? 0), 'low'),
   ];
   if (report.prevComplete) {
-    rows.push(row('Mediana vs periodo anterior', (d) => (d.a.prev.median == null ? null : mins(d.a.median) - mins(d.a.prev.median)), (d) =>
+    rows.push(row(`Mediana vs ${prevLabel()}`, (d) => (d.a.prev.median == null ? null : mins(d.a.median) - mins(d.a.prev.median)), (d) =>
       {
         if (d.a.prev.median == null) return '–';
         const dm = mins(d.a.median) - mins(d.a.prev.median);
