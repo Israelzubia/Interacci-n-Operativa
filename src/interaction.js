@@ -106,7 +106,16 @@ async function mentionReport({ groups, normalized, team, me, resolve, since, now
     for (const m of list) {
       const isTeam = members.has(m.sender);
       if (isTeam) {
-        for (const c of open.get(m.sender) ?? []) c.answeredAt = m.ts;
+        for (const c of open.get(m.sender) ?? []) {
+          if (c.answeredAt) continue;
+          c.answeredAt = m.ts;
+          // Si el mensaje arrobo a varios del equipo, la respuesta de uno cuenta para todos
+          for (const other of c.siblings) {
+            if (other.answeredAt) continue;
+            other.answeredAt = m.ts;
+            other.coveredBy = m.sender;
+          }
+        }
         open.delete(m.sender);
         continue;
       }
@@ -117,8 +126,11 @@ async function mentionReport({ groups, normalized, team, me, resolve, since, now
         const who = await toMember(jid);
         if (who) targets.add(who);
       }
+      // Menciones del mismo mensaje: comparten la lista para cerrarse juntas
+      const siblings = [];
       for (const t of targets) {
-        const c = { group: g, target: t, requester: m.sender, start: m.ts, text: m.text, answeredAt: null };
+        const c = { group: g, target: t, requester: m.sender, start: m.ts, text: m.text, answeredAt: null, siblings };
+        siblings.push(c);
         cases.push(c);
         if (!open.has(t)) open.set(t, []);
         open.get(t).push(c);
@@ -182,7 +194,15 @@ async function mentionReport({ groups, normalized, team, me, resolve, since, now
           pending: l.filter((c) => !c.answeredAt && !c.onRest).length,
           items: l
             .sort((a, b) => a.onRest - b.onRest || !b.answeredAt - !a.answeredAt || b.wait - a.wait)
-            .map((c) => ({ requester: nameOf(c.requester), text: c.text, start: c.start, answeredAt: c.answeredAt, wait: c.wait, rest: c.onRest })),
+            .map((c) => ({
+              requester: nameOf(c.requester),
+              text: c.text,
+              start: c.start,
+              answeredAt: c.answeredAt,
+              wait: c.wait,
+              rest: c.onRest,
+              coveredBy: c.coveredBy ? nameOf(c.coveredBy) : null,
+            })),
         }))
         .sort((a, b) => b.pending - a.pending || b.count - a.count),
     };
