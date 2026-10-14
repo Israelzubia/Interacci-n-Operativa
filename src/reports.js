@@ -85,6 +85,13 @@ export function reportRule({ groups, normalized, acctOf, isMonitor, nameOf, sinc
             slots: todayDay.slots.map((s) => ({ ...s, sender: s.sender ? nameOf(s.sender) : null })),
           }
         : null,
+      // Detalle de cada dia del periodo (para ver el dia que se elija)
+      days: Object.fromEntries(
+        days.map((d) => [
+          d.day,
+          { start: d.start, ...tally(d.slots), slots: d.slots.map((s) => ({ ...s, sender: s.sender ? nameOf(s.sender) : null })) },
+        ]),
+      ),
       // Ultimos casos omitidos o tarde, para revisar
       issues: days
         .flatMap((d) => d.slots.filter((s) => s.status === 'missed' || s.status === 'late').map((s) => ({ ...s, day: d.day, sender: s.sender ? nameOf(s.sender) : null })))

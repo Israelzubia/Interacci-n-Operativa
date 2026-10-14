@@ -228,7 +228,9 @@
     .slot b { font-weight: 600; }
     .slot.upcoming { border-style: dashed; color: var(--muted); }
     .report-days { display: grid; grid-template-columns: repeat(auto-fill, minmax(54px, 1fr)); gap: 6px; }
-    .report-days .d { text-align: center; font-size: .75rem; color: var(--muted); }
+    .report-days .d { text-align: center; font-size: .75rem; color: var(--muted); cursor: pointer; border-radius: 6px; padding: 3px; }
+    .report-days .d:hover { background: var(--track); }
+    .report-days .d.sel { outline: 2px solid var(--text); outline-offset: 1px; color: var(--text); }
     .report-days .bar { height: 54px; background: var(--track); border-radius: 4px; position: relative; overflow: hidden; margin-bottom: 3px; }
     .report-days .bar i { position: absolute; left: 0; right: 0; bottom: 0; background: var(--c); border-radius: 4px 4px 0 0; }
     .report-days .v { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
@@ -345,11 +347,11 @@
     <section class="card viz" id="reportCard">
       <h2>Reporte de rutas cada 2 h · proveedores MELI</h2>
       <p class="hint" id="reportHint"></p>
-      <p class="mention-kpis" id="reportKpis"></p>
+      <h3 class="acct-sub" style="margin-top:4px">Cumplimiento por día</h3>
+      <div class="report-days" id="reportDays"></div>
+      <p class="mention-kpis" id="reportKpis" style="margin-top:12px"></p>
       <div class="scroll"><table class="data report-table" id="reportTable"></table></div>
       <p class="att-good" id="reportPeople"></p>
-      <h3 class="acct-sub">Cumplimiento por día</h3>
-      <div class="report-days" id="reportDays"></div>
     </section>
 
     <section class="card viz" id="acctCard">
