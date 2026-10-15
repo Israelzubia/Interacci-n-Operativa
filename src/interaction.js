@@ -40,33 +40,68 @@ const hourOf = (ts) => Math.floor((((ts + TZ_OFFSET) % 86400) + 86400) % 86400 /
  * despues de que el equipo hablo, y termina con el primer mensaje del equipo.
  * Si el equipo cita un mensaje (responder en WhatsApp), la respuesta se marca como explicita.
  */
+// Linea de tiempo de un grupo: los mensajes y las reacciones (emoji) del equipo a mensajes de otros;
+// una reaccion del equipo cuenta como respuesta
+function timeline(list, isTeam) {
+  const events = [];
+  for (const m of list) {
+    if (!m.sender) continue; // mensajes guardados antes de registrar al remitente
+    events.push({ ts: m.ts, m });
+    for (const r of m.reactions ?? []) {
+      if (isTeam(r.sender) && r.sender !== m.sender) events.push({ ts: r.ts, reaction: { sender: r.sender, targetId: m.id } });
+    }
+  }
+  return events.sort((a, b) => a.ts - b.ts);
+}
+
+// Un mensaje eliminado antes de la respuesta (o nunca respondido) no cuenta
+const stillThere = (m, answeredAt) => !m.deletedAt || (answeredAt != null && m.deletedAt > answeredAt);
+
 function detect(groups, chats, team) {
   const requests = [];
   const teamMsgs = [];
+  const isTeam = (jid) => jid === 'me' || team.has(jid);
+  // Cierra la solicitud; si todos sus mensajes se eliminaron antes de la respuesta, se descarta
+  const finish = (open, answeredAt, responder, extra = {}) => {
+    const live = open.msgs.filter((m) => stillThere(m, answeredAt));
+    if (!live.length) return;
+    requests.push({
+      ...open,
+      requester: live[0].sender,
+      start: live[0].ts,
+      text: live[0].text,
+      count: live.length,
+      answeredAt,
+      responder,
+      ...extra,
+    });
+  };
   for (const g of groups) {
     if (g.type === 'Interno') continue;
-    const list = chats.get(g.id) ?? [];
     let open = null;
-    for (const m of list) {
-      if (!m.sender) continue; // mensajes guardados antes de registrar al remitente
-      const isTeam = m.sender === 'me' || team.has(m.sender);
-      if (isTeam) {
+    for (const e of timeline(chats.get(g.id) ?? [], isTeam)) {
+      if (e.reaction) {
+        if (open && open.ids.has(e.reaction.targetId)) {
+          finish(open, e.ts, e.reaction.sender, { explicit: true, reaction: true });
+          open = null;
+        }
+        continue;
+      }
+      const m = e.m;
+      if (isTeam(m.sender)) {
         teamMsgs.push({ g, m });
         if (!open) continue;
-        open.answeredAt = m.ts;
-        open.responder = m.sender;
-        open.explicit = !!m.quotedId && open.ids.has(m.quotedId);
-        requests.push(open);
+        finish(open, m.ts, m.sender, { explicit: !!m.quotedId && open.ids.has(m.quotedId) });
         open = null;
       } else if (!open) {
         if (isAck(m.text)) continue;
-        open = { group: g, requester: m.sender, start: m.ts, text: m.text, count: 1, ids: new Set([m.id]) };
+        open = { group: g, ids: new Set([m.id]), msgs: [m] };
       } else {
-        open.count += 1;
         open.ids.add(m.id);
+        open.msgs.push(m);
       }
     }
-    if (open) requests.push(open);
+    if (open) finish(open, null, undefined);
   }
   return { requests, teamMsgs };
 }
@@ -103,19 +138,29 @@ async function mentionReport({ groups, normalized, team, me, resolve, since, unt
     const list = normalized.get(g.id);
     if (!list || g.type === 'Interno') continue;
     const open = new Map(); // persona -> menciones abiertas en este grupo
-    for (const m of list) {
-      const isTeam = members.has(m.sender);
-      if (isTeam) {
-        for (const c of open.get(m.sender) ?? []) {
-          if (c.answeredAt) continue;
-          c.answeredAt = m.ts;
-          // Si el mensaje arrobo a varios del equipo, la respuesta de uno cuenta para todos
-          for (const other of c.siblings) {
-            if (other.answeredAt) continue;
-            other.answeredAt = m.ts;
-            other.coveredBy = m.sender;
-          }
+    // Cierra la mencion (y las de los demas arrobados en el mismo mensaje) con la respuesta de `who`
+    const answer = (c, ts, who) => {
+      if (c.answeredAt) return;
+      for (const other of c.siblings) {
+        if (other.answeredAt) continue;
+        other.answeredAt = ts;
+        if (other.target !== who) other.coveredBy = who;
+      }
+    };
+    for (const e of timeline(list, (jid) => members.has(jid))) {
+      if (e.reaction) {
+        // Reaccion de un arrobado al mensaje que lo menciono: cuenta como respuesta
+        const { sender, targetId } = e.reaction;
+        for (const c of open.get(sender) ?? []) {
+          if (c.msgId !== targetId || c.answeredAt) continue;
+          answer(c, e.ts, sender);
+          for (const other of c.siblings) other.byReaction = true;
         }
+        continue;
+      }
+      const m = e.m;
+      if (members.has(m.sender)) {
+        for (const c of open.get(m.sender) ?? []) answer(c, m.ts, m.sender);
         open.delete(m.sender);
         continue;
       }
@@ -129,7 +174,7 @@ async function mentionReport({ groups, normalized, team, me, resolve, since, unt
       // Menciones del mismo mensaje: comparten la lista para cerrarse juntas
       const siblings = [];
       for (const t of targets) {
-        const c = { group: g, target: t, requester: m.sender, start: m.ts, text: m.text, answeredAt: null, siblings };
+        const c = { group: g, target: t, requester: m.sender, start: m.ts, text: m.text, msgId: m.id, deletedAt: m.deletedAt, answeredAt: null, siblings };
         siblings.push(c);
         cases.push(c);
         if (!open.has(t)) open.set(t, []);
@@ -137,6 +182,8 @@ async function mentionReport({ groups, normalized, team, me, resolve, since, unt
       }
     }
   }
+  // Mensaje eliminado antes de que lo contestaran: la mencion no cuenta
+  const kept = cases.filter((c) => !c.deletedAt || (c.answeredAt != null && c.deletedAt > c.answeredAt));
   // Cambia "@35064532451446" por "@Nombre" para que el texto se pueda leer
   const labels = new Map();
   const readable = async (text) => {
@@ -149,7 +196,7 @@ async function mentionReport({ groups, normalized, team, me, resolve, since, unt
     return text.replace(MENTION, (all, d) => (labels.get(d)?.startsWith('+') ? all : `@${labels.get(d)}`));
   };
   const recent = [];
-  for (const c of cases) {
+  for (const c of kept) {
     if (c.start < since || c.start >= until) continue;
     // En su dia de descanso la mencion se registra pero no cuenta en su semaforo; esos dias tampoco suman espera
     const days = restOf(c.target);
@@ -202,6 +249,7 @@ async function mentionReport({ groups, normalized, team, me, resolve, since, unt
               wait: c.wait,
               rest: c.onRest,
               coveredBy: c.coveredBy ? nameOf(c.coveredBy) : null,
+              byReaction: !!c.byReaction,
             })),
         }))
         .sort((a, b) => b.pending - a.pending || b.count - a.count),
@@ -352,7 +400,11 @@ export async function interactionReport(sock, groups, chats, { days = 7, thresho
     for (const m of list) {
       if (!m.sender) continue;
       if (m.from && m.from !== 'yo') pushNames.set(m.sender, m.from);
-      out.push(m.sender === 'me' || isPnUser(m.sender) ? m : { ...m, sender: await resolve(m.sender) });
+      const norm = async (jid) => (jid === 'me' || isPnUser(jid) ? jid : await resolve(jid));
+      const msg = m.sender === 'me' || isPnUser(m.sender) ? m : { ...m, sender: await resolve(m.sender) };
+      // Quien reacciono tambien se traduce a numero
+      if (m.reactions?.length) msg.reactions = await Promise.all(m.reactions.map(async (r) => ({ ...r, sender: await norm(r.sender) })));
+      out.push(msg);
     }
     normalized.set(g.id, out);
   }

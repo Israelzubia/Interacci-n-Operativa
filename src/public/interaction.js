@@ -540,7 +540,8 @@ function mentionList(p) {
       const row = el('div', null, 'case');
       const color = !c.answeredAt ? 'red' : LIGHTS.find((l) => l.test(c.wait)).key;
       row.style.borderLeftColor = `var(--${color})`;
-      const w = el('span', c.answeredAt ? `${dur(c.wait)}${c.coveredBy ? ` · respondió ${c.coveredBy}` : ''}` : `sin respuesta · ${dur(c.wait)}`, 'w');
+      const how = c.byReaction ? ' con reacción' : '';
+      const w = el('span', c.answeredAt ? `${dur(c.wait)}${c.coveredBy ? ` · respondió ${c.coveredBy}${how}` : how ? ` · respondió${how}` : ''}` : `sin respuesta · ${dur(c.wait)}`, 'w');
       w.style.color = `var(--${color === 'yellow' ? 'text' : color})`;
       if (c.rest) {
         // Mencion en su dia de descanso: se registra pero no cuenta

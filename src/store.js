@@ -70,16 +70,50 @@ function mediaKind(message) {
 }
 
 // Guarda un mensaje de grupo de Baileys; ignora los que no son de grupo o no tienen contenido.
+const senderOf = (key, participant) => (key?.fromMe ? 'me' : pickJid(key?.participant, key?.participantAlt, participant));
+const tsOf = (msg) => Number(msg.messageTimestamp?.low ?? msg.messageTimestamp) || 0;
+
+// Marca un mensaje como eliminado por quien lo envio ("eliminar para todos"); conserva la hora mas temprana
+export function markDeleted(jid, id, ts = Date.now() / 1000) {
+  const m = chats.get(jid)?.find((x) => x.id === id);
+  if (!m || (m.deletedAt && m.deletedAt <= ts)) return;
+  m.deletedAt = ts;
+  persist();
+}
+
+// Guarda una reaccion (emoji) sobre un mensaje: quien reacciono y cuando (la primera de cada persona)
+export function addReaction(jid, targetId, sender, ts, emoji) {
+  if (!emoji || !sender) return;
+  const m = chats.get(jid)?.find((x) => x.id === targetId);
+  if (!m) return;
+  m.reactions ??= [];
+  if (m.reactions.some((r) => r.sender === sender)) return;
+  m.reactions.push({ sender, ts });
+  persist();
+}
+
 export function addMessage(msg) {
   const jid = msg.key?.remoteJid;
   if (!jid?.endsWith('@g.us')) return;
+  const content = unwrap(msg.message);
+  // Mensaje eliminado para todos: se marca el original
+  if (content?.protocolMessage?.type === 0 && content.protocolMessage.key?.id) {
+    markDeleted(jid, content.protocolMessage.key.id, tsOf(msg) || undefined);
+    return;
+  }
+  // Reaccion: se guarda en el mensaje al que reaccionaron
+  if (content?.reactionMessage) {
+    const r = content.reactionMessage;
+    addReaction(jid, r.key?.id, senderOf(msg.key, msg.participant), tsOf(msg) || Number(r.senderTimestampMs) / 1000, r.text);
+    return;
+  }
   const text = describe(msg.message);
   if (!text) return;
 
   const list = chats.get(jid) ?? [];
   if (list.some((m) => m.id === msg.key.id)) return;
   // Quien envia: 'me' para la cuenta conectada; si no, su numero o id interno
-  const sender = msg.key.fromMe ? 'me' : pickJid(msg.key.participant, msg.key.participantAlt, msg.participant);
+  const sender = senderOf(msg.key, msg.participant);
   if (!msg.key.fromMe) rememberName(sender, { push: msg.pushName });
   // Mensaje al que responde (cuando se usa "responder" en WhatsApp)
   const ctx = Object.values(unwrap(msg.message) ?? {}).find((v) => v?.contextInfo)?.contextInfo;
@@ -93,7 +127,7 @@ export function addMessage(msg) {
     mentions: ctx?.mentionedJid?.length ? ctx.mentionedJid : undefined,
     text,
     kind: mediaKind(msg.message),
-    ts: Number(msg.messageTimestamp?.low ?? msg.messageTimestamp) || 0,
+    ts: tsOf(msg),
   });
   list.sort((a, b) => a.ts - b.ts);
   const cutoff = Date.now() / 1000 - RETENTION_SECS;

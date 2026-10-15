@@ -3,8 +3,8 @@ import makeWASocket, {
   fetchLatestBaileysVersion,
   useMultiFileAuthState,
 } from '@whiskeysockets/baileys';
-import { rememberName } from './people.js';
-import { addMessage } from './store.js';
+import { pickJid, rememberName } from './people.js';
+import { addMessage, addReaction, markDeleted } from './store.js';
 import { existsSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
 import pino from 'pino';
@@ -86,6 +86,21 @@ async function openSocket() {
   connecting = false;
   sock.ev.on('creds.update', saveCreds);
   sock.ev.on('messages.upsert', ({ messages }) => messages.forEach(safeAdd));
+  // Mensajes eliminados para todos (WhatsApp manda la actualizacion con el mensaje vacio)
+  sock.ev.on('messages.update', (updates) => {
+    for (const { key, update } of updates) {
+      if (key?.remoteJid?.endsWith('@g.us') && update?.message === null) markDeleted(key.remoteJid, key.id);
+    }
+  });
+  // Reacciones (emoji) a mensajes de grupo
+  sock.ev.on('messages.reaction', (reactions) => {
+    for (const { key, reaction } of reactions) {
+      if (!key?.remoteJid?.endsWith('@g.us')) continue;
+      const by = reaction?.key;
+      const sender = by?.fromMe ? 'me' : pickJid(by?.participant, by?.participantAlt);
+      addReaction(key.remoteJid, key.id, sender, Number(reaction?.senderTimestampMs) / 1000 || Date.now() / 1000, reaction?.text);
+    }
+  });
   sock.ev.on('messaging-history.set', ({ messages, contacts }) => {
     messages.forEach(safeAdd);
     contacts?.forEach(learnContact);
