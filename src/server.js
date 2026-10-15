@@ -6,7 +6,7 @@ import { fetchGroups, listGroups } from './groups.js';
 import { interactionReport, MAX_THRESHOLD } from './interaction.js';
 import { addArea, flush as flushPeople, listAreas, listPeople, setArea, setName, setRest, setRole } from './people.js';
 import { allChats, flush as flushMessages, getMessages } from './store.js';
-import { connect, getSocket, getState, logout, syncContacts } from './whatsapp.js';
+import { backfill, backfillHistory, connect, getSocket, getState, logout, syncContacts } from './whatsapp.js';
 
 const PORT = process.env.PORT || 3000;
 const app = express();
@@ -126,6 +126,20 @@ app.post('/api/people/role', (req, res) => {
     res.status(400).json({ error: err.message });
   }
 });
+
+// Recupera del telefono el historial (reacciones y eliminados) de los grupos con clientes y proveedores
+// desde una fecha: { from: 'AAAA-MM-DD', groups?: [ids], limit? }
+app.post('/api/history/backfill', async (req, res) => {
+  try {
+    const fromTs = Date.parse(`${req.body.from}T04:00:00-06:00`) / 1000;
+    if (!fromTs) throw new Error('Fecha no válida');
+    const ids = req.body.groups ?? (await fetchGroups()).filter((g) => g.type !== 'Interno').map((g) => g.id);
+    res.json(await backfillHistory(ids, fromTs, { limit: Number(req.body.limit) || Infinity }));
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+app.get('/api/history/backfill', (_req, res) => res.json(backfill));
 
 // Trae de nuevo los nombres de la agenda del telefono
 app.post('/api/contacts/sync', async (_req, res) => {

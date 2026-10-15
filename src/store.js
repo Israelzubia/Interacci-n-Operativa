@@ -10,11 +10,13 @@ const MAX_SHOWN = 500;
 
 // jid del grupo -> mensajes ordenados por fecha
 const chats = new Map();
+let repaired = false;
 let timer = null;
 
 try {
   const saved = JSON.parse(readFileSync(FILE, 'utf8'));
-  for (const [jid, msgs] of Object.entries(saved)) chats.set(jid, msgs);
+  for (const [jid, msgs] of Object.entries(saved)) chats.set(jid, msgs.map(repairReactions));
+  if (repaired) setTimeout(persist, 0);
 } catch {
   // primera ejecucion: sin datos previos
 }
@@ -26,6 +28,21 @@ function writeNow() {
   mkdirSync('data', { recursive: true });
   writeFileSync(`${FILE}.tmp`, JSON.stringify(Object.fromEntries(chats)));
   renameSync(`${FILE}.tmp`, FILE);
+}
+
+// Reparacion: reacciones del historial guardadas con solo la parte baja de la hora (antes de longToMs).
+// Se reconstruye la parte alta tomando la hora mas cercana posterior al mensaje (el ciclo es de ~49 dias).
+function repairReactions(m) {
+  if (!m.reactions?.some((r) => r.ts < 1e9)) return m;
+  repaired = true;
+  for (const r of m.reactions) {
+    if (r.ts >= 1e9) continue;
+    const low = Math.round(r.ts * 1000) >>> 0;
+    let ms = Math.round((m.ts * 1000 - low) / 2 ** 32) * 2 ** 32 + low;
+    if (ms < m.ts * 1000 - 60_000 && ms + 2 ** 32 <= Date.now()) ms += 2 ** 32;
+    r.ts = ms / 1000;
+  }
+  return m;
 }
 
 function persist() {
@@ -70,6 +87,13 @@ function mediaKind(message) {
 }
 
 // Guarda un mensaje de grupo de Baileys; ignora los que no son de grupo o no tienen contenido.
+// Milisegundos de un numero grande de WhatsApp (Long de protobuf: { low, high }) o de un numero normal
+export const longToMs = (v) => {
+  if (v == null) return NaN;
+  if (typeof v === 'object') return typeof v.toNumber === 'function' ? v.toNumber() : (v.high >>> 0) * 2 ** 32 + (v.low >>> 0);
+  return Number(v);
+};
+
 const senderOf = (key, participant) => (key?.fromMe ? 'me' : pickJid(key?.participant, key?.participantAlt, participant));
 const tsOf = (msg) => Number(msg.messageTimestamp?.low ?? msg.messageTimestamp) || 0;
 
@@ -104,7 +128,7 @@ export function addMessage(msg) {
   // Reaccion: se guarda en el mensaje al que reaccionaron
   if (content?.reactionMessage) {
     const r = content.reactionMessage;
-    addReaction(jid, r.key?.id, senderOf(msg.key, msg.participant), tsOf(msg) || Number(r.senderTimestampMs) / 1000, r.text);
+    addReaction(jid, r.key?.id, senderOf(msg.key, msg.participant), tsOf(msg) || longToMs(r.senderTimestampMs) / 1000, r.text);
     return;
   }
   const text = describe(msg.message);
@@ -132,7 +156,31 @@ export function addMessage(msg) {
   list.sort((a, b) => a.ts - b.ts);
   const cutoff = Date.now() / 1000 - RETENTION_SECS;
   chats.set(jid, list.filter((m) => m.ts >= cutoff).slice(-MAX_PER_CHAT));
+  saveHistoryExtras(jid, msg);
   persist();
+}
+
+// Reacciones que trae un mensaje del historial (WhatsApp las incluye en cada mensaje)
+function saveHistoryExtras(jid, msg) {
+  for (const r of msg.reactions ?? []) {
+    const ts = longToMs(r.senderTimestampMs) / 1000;
+    addReaction(jid, msg.key.id, senderOf(r.key, r.key?.participant), ts || tsOf(msg), r.text);
+  }
+}
+
+/*
+ * Mensaje que llega del historial y que ya estaba guardado: agrega sus reacciones y, si aparece
+ * eliminado (stub REVOKE = 1), lo marca. El historial no dice a que hora se elimino; se toma como
+ * eliminado al momento, es decir, antes de cualquier respuesta. Devuelve false si no estaba guardado.
+ */
+export function mergeHistory(msg) {
+  const jid = msg.key?.remoteJid;
+  if (!jid?.endsWith('@g.us')) return false;
+  const existing = chats.get(jid)?.find((m) => m.id === msg.key.id);
+  if (!existing) return false;
+  saveHistoryExtras(jid, msg);
+  if (msg.messageStubType === 1) markDeleted(jid, msg.key.id, existing.ts);
+  return true;
 }
 
 export const allChats = () => chats;

@@ -4,7 +4,7 @@ import makeWASocket, {
   useMultiFileAuthState,
 } from '@whiskeysockets/baileys';
 import { pickJid, rememberName } from './people.js';
-import { addMessage, addReaction, markDeleted } from './store.js';
+import { addMessage, addReaction, allChats, longToMs, markDeleted, mergeHistory } from './store.js';
 import { existsSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
 import pino from 'pino';
@@ -98,11 +98,13 @@ async function openSocket() {
       if (!key?.remoteJid?.endsWith('@g.us')) continue;
       const by = reaction?.key;
       const sender = by?.fromMe ? 'me' : pickJid(by?.participant, by?.participantAlt);
-      addReaction(key.remoteJid, key.id, sender, Number(reaction?.senderTimestampMs) / 1000 || Date.now() / 1000, reaction?.text);
+      addReaction(key.remoteJid, key.id, sender, longToMs(reaction?.senderTimestampMs) / 1000 || Date.now() / 1000, reaction?.text);
     }
   });
   sock.ev.on('messaging-history.set', ({ messages, contacts }) => {
-    messages.forEach(safeAdd);
+    // Del historial: completa los mensajes ya guardados (reacciones, eliminados) y agrega los nuevos
+    for (const m of messages) if (!mergeHistory(m)) safeAdd(m);
+    backfill.received += messages.length;
     contacts?.forEach(learnContact);
   });
   sock.ev.on('contacts.upsert', (contacts) => contacts.forEach(learnContact));
@@ -158,6 +160,46 @@ export async function syncContacts() {
     sock.ev.off('contacts.upsert', count);
   }
   return { received };
+}
+
+/*
+ * Recupera del telefono el historial de los grupos indicados desde `fromTs`, para completar
+ * reacciones y mensajes eliminados de dias anteriores. Pide bloques de 50 mensajes hacia atras,
+ * partiendo de mensajes ya guardados cada `step`, con una pausa entre peticiones.
+ */
+export const backfill = { running: false, done: 0, total: 0, received: 0, errors: 0, startedAt: null, finishedAt: null };
+
+export async function backfillHistory(groupIds, fromTs, { step = 40, delayMs = 4000, limit = Infinity } = {}) {
+  if (backfill.running) throw new Error('Ya hay una recuperación en curso');
+  if (!sock || state.status !== 'connected') throw new Error('WhatsApp no está conectado');
+  // Mensajes de referencia: del mas reciente hacia atras, uno cada `step`, hasta llegar a `fromTs`
+  const anchors = [];
+  for (const id of groupIds) {
+    const list = allChats().get(id) ?? [];
+    for (let i = list.length - 1; i >= 0 && anchors.length < limit; i -= step) {
+      anchors.push({ jid: id, m: list[i] });
+      if (list[i].ts < fromTs) break;
+    }
+  }
+  Object.assign(backfill, { running: true, done: 0, total: anchors.length, received: 0, errors: 0, startedAt: Date.now(), finishedAt: null });
+  (async () => {
+    for (const { jid, m } of anchors) {
+      if (state.status !== 'connected') break;
+      try {
+        const key = { remoteJid: jid, id: m.id, fromMe: !!m.fromMe };
+        await sock.fetchMessageHistory(50, key, m.ts * 1000);
+      } catch (err) {
+        backfill.errors += 1;
+        console.error(new Date().toISOString(), 'Historial no disponible:', err.message);
+      }
+      backfill.done += 1;
+      await new Promise((r) => setTimeout(r, delayMs));
+    }
+    backfill.running = false;
+    backfill.finishedAt = Date.now();
+    console.log(new Date().toISOString(), 'Recuperación de historial terminada', JSON.stringify(backfill));
+  })();
+  return { ...backfill };
 }
 
 export async function logout() {
