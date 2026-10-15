@@ -234,6 +234,8 @@
     .report-days .bar { height: 54px; background: var(--track); border-radius: 4px; position: relative; overflow: hidden; margin-bottom: 3px; }
     .report-days .bar i { position: absolute; left: 0; right: 0; bottom: 0; background: var(--c); border-radius: 4px 4px 0 0; }
     .report-days .v { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
+    .day-pick { width: auto; margin: 0; padding: 4px 8px; font-size: .85rem; }
+    .day-pick.active { border-color: var(--accent); outline: 2px solid var(--accent); }
     [hidden] { display: none !important; }
   </style>
 </head>
@@ -327,6 +329,7 @@
   <div id="viewInteraction" hidden>
     <div class="controls">
       <label>Periodo <span class="tabs" id="daysTabs"></span></label>
+      <label>Día <input type="date" id="dayPick" class="day-pick" title="Ver el desempeño de un día"></label>
       <label>Área <span class="tabs" id="areaFilter"></span></label>
       <label>Sin respuesta después de <select id="threshold" style="width:auto">
         <option value="5">5 min</option><option value="10" selected>10 min</option>

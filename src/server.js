@@ -64,7 +64,9 @@ app.get('/api/interaction', async (req, res) => {
   try {
     if (getState().status !== 'connected') return res.json(null);
     // days=actual: la jornada en curso (hoy desde las 4:00 hasta ahora)
-    const days = req.query.days === 'actual' ? 'actual' : Math.min(30, Math.max(1, Number(req.query.days) || 7));
+    // o days=AAAA-MM-DD: la jornada de ese dia
+    const q = String(req.query.days ?? '');
+    const days = q === 'actual' || /^\d{4}-\d{2}-\d{2}$/.test(q) ? q : Math.min(30, Math.max(1, Number(q) || 7));
     const threshold = Math.min(MAX_THRESHOLD, Math.max(1, Number(req.query.threshold) || MAX_THRESHOLD));
     res.json(await interactionReport(getSocket(), await fetchGroups(), allChats(), { days, threshold }));
   } catch (err) {

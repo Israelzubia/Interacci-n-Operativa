@@ -90,7 +90,7 @@ const MENTION = /@(\d{6,})/g;
  * Cada mencion queda abierta hasta que la persona arrobada escribe en ese grupo; el tiempo cuenta
  * solo dentro del horario. Usa las menciones guardadas o, en mensajes anteriores, las del texto.
  */
-async function mentionReport({ groups, normalized, team, me, resolve, since, now, thr, nameOf, areaOf, restOf, acctOf }) {
+async function mentionReport({ groups, normalized, team, me, resolve, since, until, now, thr, nameOf, areaOf, restOf, acctOf }) {
   const members = new Set(['me', ...team]);
   // Persona del equipo arrobada; la cuenta propia se guarda como 'me'
   const toMember = async (jid) => {
@@ -150,7 +150,7 @@ async function mentionReport({ groups, normalized, team, me, resolve, since, now
   };
   const recent = [];
   for (const c of cases) {
-    if (c.start < since) continue;
+    if (c.start < since || c.start >= until) continue;
     // En su dia de descanso la mencion se registra pero no cuenta en su semaforo; esos dias tampoco suman espera
     const days = restOf(c.target);
     recent.push({
@@ -361,22 +361,28 @@ export async function interactionReport(sock, groups, chats, { days = 7, thresho
   for (const list of normalized.values()) if (list.length && (dataSince == null || list[0].ts < dataSince)) dataSince = list[0].ts;
   const now = Date.now() / 1000;
   const current = days === 'actual';
-  const since = current ? currentShiftStart(now) : now - days * 86400;
-  // Periodo anterior para comparar: en "actual", la misma franja de ayer (4:00 a la hora de ahora)
-  const prevFrom = current ? since - 86400 : since - days * 86400;
-  const prevTo = current ? now - 86400 : since;
+  // Un dia especifico (AAAA-MM-DD): su jornada de 4:00 a 23:59
+  const oneDay = /^\d{4}-\d{2}-\d{2}$/.test(String(days));
+  const since = oneDay
+    ? Date.parse(`${days}T00:00:00Z`) / 1000 - TZ_OFFSET + WORK_START
+    : current ? currentShiftStart(now) : now - days * 86400;
+  const until = oneDay ? Math.min(since + (WORK_END - WORK_START), now) : now;
+  const inPeriod = (ts) => ts >= since && ts < until;
+  // Periodo anterior para comparar: en "actual" y en un dia, la misma franja del dia anterior
+  const prevFrom = current || oneDay ? since - 86400 : since - days * 86400;
+  const prevTo = current || oneDay ? until - 86400 : since;
   const thr = threshold * 60;
   const { requests, teamMsgs } = detect(groups, normalized, team);
   const withWait = (r) => ({ ...r, wait: workSeconds(r.start, r.answeredAt ?? now) });
   // Cuenta del grupo (MELI, Multicuentas u Ops BDB), confirmada o sugerida
   const acctOf = (g) => accountOf(g.id, g.client, g.name, g.type).account ?? 'Sin clasificar';
-  const reqs = requests.filter((r) => r.start >= since).map(withWait);
+  const reqs = requests.filter((r) => inPeriod(r.start)).map(withWait);
   // Periodo anterior de la misma duracion, para comparar tendencias
   const prevReqs = requests.filter((r) => r.start >= prevFrom && r.start < prevTo).map(withWait);
   const prevBy = (key) => group(prevReqs, key);
   // Serie diaria de los ultimos dias (para graficas de tendencia)
   const trendReqs = requests.filter((r) => r.start >= now - TREND_DAYS * 86400).map(withWait);
-  const recentTeam = teamMsgs.filter(({ m }) => m.ts >= since);
+  const recentTeam = teamMsgs.filter(({ m }) => inPeriod(m.ts));
 
   const nameOf = (jid) =>
     jid === 'me'
@@ -486,7 +492,7 @@ export async function interactionReport(sock, groups, chats, { days = 7, thresho
     .filter((p) => p.messages || p.responses)
     .sort((a, b) => b.responses - a.responses || b.messages - a.messages);
 
-  const mentions = await mentionReport({ groups, normalized, team, me, resolve, since, now, thr, nameOf, areaOf: areaOfMember, restOf, acctOf });
+  const mentions = await mentionReport({ groups, normalized, team, me, resolve, since, until, now, thr, nameOf, areaOf: areaOfMember, restOf, acctOf });
 
   // Regla del reporte de rutas cada 2 h en los grupos de proveedores de MELI
   const reports = reportRule({
@@ -496,6 +502,7 @@ export async function interactionReport(sock, groups, chats, { days = 7, thresho
     isMonitor: (jid) => (jid === 'me' || team.has(jid)) && areaOfMember(jid) === 'Monitoreo',
     nameOf,
     since,
+    until,
     now,
   });
 
@@ -503,7 +510,7 @@ export async function interactionReport(sock, groups, chats, { days = 7, thresho
   const hours = Array.from({ length: 24 }, (_, h) => ({ hour: h, counterpart: 0, team: 0 }));
   for (const list of normalized.values()) {
     for (const m of list) {
-      if (m.ts < since) continue;
+      if (!inPeriod(m.ts)) continue;
       const isTeam = m.sender === 'me' || team.has(m.sender);
       hours[hourOf(m.ts)][isTeam ? 'team' : 'counterpart'] += 1;
     }
@@ -551,6 +558,7 @@ export async function interactionReport(sock, groups, chats, { days = 7, thresho
     // El periodo anterior solo se compara si hay datos con remitente de todo ese periodo
     prevComplete: dataSince != null && prevFrom >= dataSince,
     since,
+    until,
     teamSize: memberKeys.size,
     totals: {
       ...summarize(reqs, thr),

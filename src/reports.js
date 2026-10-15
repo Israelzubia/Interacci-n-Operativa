@@ -77,7 +77,7 @@ function saveHistory() {
 
 const withNames = (slots, nameOf) => slots.map((s) => ({ ...s, sender: s.sender ? nameOf(s.sender) : null }));
 
-export function reportRule({ groups, normalized, acctOf, isMonitor, nameOf, since, now }) {
+export function reportRule({ groups, normalized, acctOf, isMonitor, nameOf, since, until = Infinity, now }) {
   const ruleGroups = groups.filter((g) => g.type === 'Proveedores' && acctOf(g) === 'MELI');
   const today = dayOf(now);
   const ruleStart = dayOf(Date.parse(`${REPORT_RULE.startDay}T12:00:00Z`) / 1000);
@@ -124,7 +124,7 @@ export function reportRule({ groups, normalized, acctOf, isMonitor, nameOf, sinc
     for (const [key, perGroup] of computed) {
       const r = perGroup.get(g.id);
       if (!r) continue;
-      const slots = r.slots.filter((s) => s.due >= since);
+      const slots = r.slots.filter((s) => s.due >= since && s.due < until);
       days.push({ day: key, start: r.start, slots });
       for (const s of slots) all.push({ ...s, group: g, day: key });
     }
