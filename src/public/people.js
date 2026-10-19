@@ -353,7 +353,9 @@ function showView(view) {
   $('viewGroups').hidden = view !== 'groups';
   $('viewPeople').hidden = view !== 'people';
   $('viewInteraction').hidden = view !== 'interaction';
+  $('viewCleanup').hidden = view !== 'cleanup';
   if (view === 'people' && !peopleLoaded) loadPeople();
+  if (view === 'cleanup') openCleanup();
   if (view === 'interaction') loadInteraction();
 }
 

@@ -167,7 +167,7 @@ export async function listPeople(sock, groups, chats) {
   const people = new Map();
   const get = (jid) => {
     if (!people.has(jid)) {
-      people.set(jid, { jid, isMe: jid === me, groups: [], types: new Set(), clients: new Map(), messages: 0, lastMessageAt: null, aliases: new Set() });
+      people.set(jid, { jid, isMe: jid === me, groups: [], memberships: [], types: new Set(), clients: new Map(), messages: 0, lastMessageAt: null, aliases: new Set() });
     }
     return people.get(jid);
   };
@@ -179,6 +179,8 @@ export async function listPeople(sock, groups, chats) {
       const p = get(await resolve(raw));
       p.aliases.add(jidNormalizedUser(part.id));
       p.groups.push(g.name);
+      // Grupo donde esta y si es administrador (para la vista Limpieza)
+      p.memberships.push({ id: g.id, admin: !!part.admin });
       p.types.add(g.type);
       p.clients.set(g.client, (p.clients.get(g.client) ?? 0) + 1);
     }
@@ -207,6 +209,7 @@ export async function listPeople(sock, groups, chats) {
         isMe: p.isMe,
         groupCount: p.groups.length,
         groups: p.groups.sort((a, b) => a.localeCompare(b, 'es')),
+        memberships: p.memberships,
         types: [...p.types],
         clients: [...p.clients.entries()].sort((a, b) => b[1] - a[1]).map(([c]) => c),
         messages: p.messages,

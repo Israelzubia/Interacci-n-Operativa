@@ -236,6 +236,17 @@
     .report-days .v { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
     .day-pick { width: auto; margin: 0; padding: 4px 8px; font-size: .85rem; }
     .day-pick.active { border-color: var(--accent); outline: 2px solid var(--accent); }
+    /* Limpieza */
+    .cl-person { border-top: 1px solid var(--line); padding: 14px 0 6px; }
+    .cl-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+    .cl-head .who { font-weight: 600; font-size: 1rem; }
+    .cl-head .phone { color: var(--muted); font-size: .85rem; margin-left: 6px; }
+    .cl-head button { padding: 3px 10px; font-size: .8rem; }
+    table.cl-groups td { font-size: .86rem; }
+    table.cl-groups td.g { cursor: pointer; }
+    table.cl-groups td.g:hover { text-decoration: underline; }
+    .cl-badge { font-size: .72rem; padding: 1px 7px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
+    .cl-badge.adm { border-color: var(--text); color: var(--text); }
     [hidden] { display: none !important; }
   </style>
 </head>
@@ -266,6 +277,7 @@
     <button data-view="groups" class="active">Grupos</button>
     <button data-view="interaction">Interacción</button>
     <button data-view="people">Personas</button>
+    <button data-view="cleanup">Limpieza</button>
     <span class="updated" id="updated"></span>
   </nav>
 
@@ -441,6 +453,21 @@
     </details>
   </div>
 
+  <div id="viewCleanup" hidden>
+    <section class="card">
+      <div class="row">
+        <strong>Limpieza</strong>
+        <button id="cleanupRefresh">Actualizar</button>
+      </div>
+      <p class="hint muted" style="margin:6px 0 12px;font-size:.85rem">
+        Escribe el nombre o el número de teléfono de una persona para ver todos los grupos en los que está actualmente.
+      </p>
+      <input id="cleanupQuery" type="search" placeholder="Nombre o número, por ejemplo: Ivi o 4152875236" autocomplete="off">
+      <p class="muted" id="cleanupNote" style="font-size:.85rem;margin:0"></p>
+      <div id="cleanupResults"></div>
+    </section>
+  </div>
+
   <div id="viewPeople" hidden>
     <div class="kpis" id="peopleKpis"></div>
     <section class="card" id="areasCard">
@@ -498,5 +525,6 @@
 <script src="app.js"></script>
 <script src="people.js"></script>
 <script src="interaction.js"></script>
+<script src="cleanup.js"></script>
 </body>
 </html>
