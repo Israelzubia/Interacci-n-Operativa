@@ -21,7 +21,8 @@ export function clientOf(name) {
 
 // Tipo de grupo segun con quien es: proveedores externos, el cliente o solo equipo interno.
 const TYPE_RULES = [
-  { type: 'Proveedores', test: /proveedor|extern|mgp logistic|^rentals\s*$/i },
+  // "proveedor" y variantes mal escritas ("provedor", "provedires")
+  { type: 'Proveedores', test: /prove?e?d[oi]r|extern|mgp logistic|^rentals\s*$/i },
   { type: 'Clientes', test: /<>|estafeta/i },
   // Grupos con el cliente que no usan "<>" en el nombre
   {
