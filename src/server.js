@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import express from 'express';
 import { flush as flushAccounts, setAccount, setType } from './accounts.js';
+import { removeFromGroups } from './cleanup.js';
 import { fileURLToPath } from 'node:url';
 import { fetchGroups, listGroups } from './groups.js';
 import { interactionReport, MAX_THRESHOLD } from './interaction.js';
@@ -140,6 +141,20 @@ app.post('/api/history/backfill', async (req, res) => {
   }
 });
 app.get('/api/history/backfill', (_req, res) => res.json(backfill));
+
+// Limpieza: saca a una persona de grupos donde la cuenta es administradora
+// { jid, groups: [ids], dryRun? } -> resultado por grupo
+app.post('/api/cleanup/remove', async (req, res) => {
+  try {
+    if (getState().status !== 'connected') throw new Error('WhatsApp no está conectado');
+    if (!req.body.jid || !req.body.groups?.length) throw new Error('Falta la persona o los grupos');
+    const results = await removeFromGroups(getSocket(), await fetchGroups(), req.body.jid, req.body.groups, { dryRun: !!req.body.dryRun });
+    console.log(new Date().toISOString(), req.body.dryRun ? 'Limpieza (prueba)' : 'Limpieza', req.body.jid, JSON.stringify(results.map((r) => [r.name, r.status])));
+    res.json(results);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
 
 // Trae de nuevo los nombres de la agenda del telefono
 app.post('/api/contacts/sync', async (_req, res) => {

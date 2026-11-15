@@ -28,6 +28,11 @@ async function fetchRaw(sock) {
   return inflight;
 }
 
+// Olvida la lista guardada (por ejemplo, despues de sacar a alguien de grupos)
+export function invalidateGroups() {
+  cache = { at: 0, data: null };
+}
+
 // Metadatos de los grupos de la cuenta conectada (con integrantes), clasificados por cliente y tipo.
 export async function fetchGroups() {
   const sock = getSocket();

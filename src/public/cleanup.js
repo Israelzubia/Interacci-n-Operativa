@@ -48,6 +48,14 @@ function personResult(p, myAdmin) {
   const copy = el('button', 'Copiar lista');
   copy.addEventListener('click', () => copyList(p, list));
   right.append(el('span', `Está en ${num(list.length)} ${list.length === 1 ? 'grupo' : 'grupos'} `, 'muted'), copy);
+  // Sacarla de todos los grupos donde la cuenta conectada es administradora
+  const removable = list.filter((g) => g.iAmAdmin);
+  if (!p.isMe && removable.length) {
+    const out = el('button', `Sacar de ${num(removable.length)} ${removable.length === 1 ? 'grupo' : 'grupos'} donde eres admin`, 'danger');
+    out.style.marginLeft = '6px';
+    out.addEventListener('click', () => removePerson(p, removable, out));
+    right.append(out);
+  }
   head.append(who, right);
 
   const table = el('table', null, 'data cl-groups');
@@ -69,6 +77,47 @@ function personResult(p, myAdmin) {
   scroll.append(table);
   box.append(head, scroll);
   return box;
+}
+
+const STATUS_TEXT = {
+  removed: 'la sacaste',
+  'not-member': 'ya no estaba',
+  'not-admin': 'ya no eres admin',
+  owner: 'es la creadora del grupo, no se puede sacar',
+  error: 'WhatsApp no lo permitió',
+  'not-found': 'grupo no disponible',
+};
+
+async function removePerson(p, list, button) {
+  const who = `${p.name ?? 'Sin nombre'} ${p.phone ?? ''}`.trim();
+  const ok = confirm(
+    `¿Sacar a ${who} de ${list.length} ${list.length === 1 ? 'grupo' : 'grupos'}?\n\n` +
+      list.map((g) => `• ${g.name}`).join('\n') +
+      '\n\nWhatsApp avisará en cada grupo que la sacaste. Esta acción no se puede deshacer desde aquí.',
+  );
+  if (!ok) return;
+  button.disabled = true;
+  button.textContent = `Sacando de ${list.length} grupos…`;
+  const res = await fetch('/api/cleanup/remove', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ jid: p.jid, groups: list.map((g) => g.id) }),
+  });
+  const results = await res.json().catch(() => ({ error: 'Respuesta no válida' }));
+  if (!res.ok) {
+    button.disabled = false;
+    button.textContent = 'Reintentar';
+    return alert(`No se pudo: ${results.error}`);
+  }
+  const removed = results.filter((r) => r.status === 'removed').length;
+  const others = results.filter((r) => r.status !== 'removed');
+  alert(
+    `${who}: la sacaste de ${removed} de ${results.length} grupos.` +
+      (others.length ? `\n\nNo se sacó de:\n${others.map((r) => `• ${r.name}: ${STATUS_TEXT[r.status] ?? r.status}`).join('\n')}` : ''),
+  );
+  $('cleanupNote').textContent = 'Actualizando…';
+  await loadPeople();
+  renderCleanup();
 }
 
 function renderCleanup() {
